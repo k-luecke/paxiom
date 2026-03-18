@@ -66,7 +66,7 @@
     margin-bottom: 14px;
   }
   .component {
-    margin-bottom: 28px;
+    margin-bottom: 20px;
     padding: 20px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -76,7 +76,6 @@
     font-weight: 600;
     color: var(--text);
     margin-bottom: 6px;
-    letter-spacing: 0.02em;
   }
   .component-desc {
     font-size: 14px;
@@ -153,6 +152,40 @@
 
 <a class="back" href="index.html">← Paxiom</a>
 
+<h2>Plain English</h2>
+<p>
+Blockchains are separate networks that cannot natively talk to each other. Moving value between them — say from Ethereum to Arbitrum — currently requires trusting a third party to relay the message. That third party is the attack surface. Over $2 billion has been stolen from cross-chain bridges because of it. Someone compromised the trusted middleman and the money was gone.
+</p>
+<p>
+Paxiom removes the middleman entirely. Instead of asking a third party "did this transaction happen on the other chain?", Paxiom generates a mathematical proof that it happened. The proof is verifiable by anyone, requires no trust, and is stored permanently so it cannot be altered or deleted.
+</p>
+<p>
+Think of it like the difference between a bank telling you your balance and being able to count the money yourself. One requires trust. The other requires math. Paxiom is the math version.
+</p>
+<p>
+The practical application is cross-chain finance — moving capital between blockchain networks to capture price differences, execute loans, and settle transactions without exposing users to the risk of a trusted intermediary being compromised. The same infrastructure also produces a permanent audit trail of every transaction, which is directly useful for regulatory compliance — not because someone agreed to keep records, but because the system is architecturally incapable of losing them.
+</p>
+
+<h2>Who uses it and why</h2>
+<p>
+Anyone who moves value between blockchain networks has a trust problem today. Paxiom solves it for three groups in particular.
+</p>
+
+<div class="component">
+  <div class="component-title">Traders and arbitrageurs</div>
+  <p class="component-desc">Price differences exist between the same asset on different networks. Capturing them requires executing trades on two chains simultaneously. Today this requires either pre-positioned capital on both chains or trusting a bridge to move funds in time. Paxiom coordinates execution across chains without a trusted intermediary, making these trades faster, cheaper, and safer. Live scanner data shows consistent daily opportunities averaging 0.06% spread across Arbitrum, Optimism, and Base — with peaks above 0.7% during volatile periods.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">DeFi protocols and bridges</div>
+  <p class="component-desc">Any protocol that currently uses an oracle, relayer, or validator set to verify cross-chain state can use Paxiom instead. The verification is mathematical rather than institutional — no keys to compromise, no validators to bribe, no multisig to manipulate. This is particularly relevant for lending protocols, bridges, and any application that needs to know the confirmed state of another chain before taking action.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">Institutions and regulated entities</div>
+  <p class="component-desc">Banks, asset managers, and funds tokenizing real-world assets need cryptographic guarantees rather than trust assumptions. They also need audit trails that satisfy regulators without depending on institutional cooperation to produce them. Paxiom provides both — mathematical verification of cross-chain state and a permanent tamper-evident record of every transaction stored on decentralized infrastructure that no party can alter or delete. Compliance by architecture rather than policy.</p>
+</div>
+
 <h2>What we're building</h2>
 <p>
 Paxiom is a cross-chain execution and verification infrastructure protocol. The core problem it solves is trust — every existing cross-chain protocol relies on a trusted intermediary at some point in its verification stack. Relayers, validator sets, multisig committees, and oracle networks all introduce a single point of trust and therefore a single point of failure.
@@ -206,38 +239,6 @@ Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus 
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936" target="_blank">View transaction →</a>
 </div>
 
-<h2>Who uses it and why</h2>
-<p>
-Anyone who moves value between blockchain networks has a trust problem today. Paxiom solves it for three groups in particular.
-</p>
-<div class="component">
-  <div class="component-title">Traders and arbitrageurs</div>
-  <p class="component-desc">Price differences exist between the same asset on different networks. Capturing them requires executing trades on two chains simultaneously. Today this requires either pre-positioned capital on both chains or trusting a bridge to move funds in time. Paxiom coordinates execution across chains without a trusted intermediary, making these trades faster, cheaper, and safer. Live scanner data shows consistent daily opportunities averaging 0.06% spread across Arbitrum, Optimism, and Base — with peaks above 0.7% during volatile periods.</p>
-</div>
-<div class="component">
-  <div class="component-title">DeFi protocols and bridges</div>
-  <p class="component-desc">Any protocol that currently uses an oracle, relayer, or validator set to verify cross-chain state can use Paxiom instead. The verification is mathematical rather than institutional — no keys to compromise, no validators to bribe, no multisig to manipulate. This is particularly relevant for lending protocols, bridges, and any application that needs to know the confirmed state of another chain before taking action.</p>
-</div>
-<div class="component">
-  <div class="component-title">Institutions and regulated entities</div>
-  <p class="component-desc">Banks, asset managers, and funds tokenizing real-world assets need cryptographic guarantees rather than trust assumptions. They also need audit trails that satisfy regulators without depending on institutional cooperation to produce them. Paxiom provides both — mathematical verification of cross-chain state and a permanent tamper-evident record of every transaction stored on decentralized infrastructure that no party can alter or delete. Compliance by architecture rather than policy.</p>
-</div>
-<h2>Who uses it and why</h2>
-<p>
-Anyone who moves value between blockchain networks has a trust problem today. Paxiom solves it for three groups in particular.
-</p>
-<div class="component">
-  <div class="component-title">Traders and arbitrageurs</div>
-  <p class="component-desc">Price differences exist between the same asset on different networks. Capturing them requires executing trades on two chains simultaneously. Today this requires either pre-positioned capital on both chains or trusting a bridge to move funds in time. Paxiom coordinates execution across chains without a trusted intermediary, making these trades faster, cheaper, and safer. Live scanner data shows consistent daily opportunities averaging 0.06% spread across Arbitrum, Optimism, and Base — with peaks above 0.7% during volatile periods.</p>
-</div>
-<div class="component">
-  <div class="component-title">DeFi protocols and bridges</div>
-  <p class="component-desc">Any protocol that currently uses an oracle, relayer, or validator set to verify cross-chain state can use Paxiom instead. The verification is mathematical rather than institutional — no keys to compromise, no validators to bribe, no multisig to manipulate. This is particularly relevant for lending protocols, bridges, and any application that needs to know the confirmed state of another chain before taking action.</p>
-</div>
-<div class="component">
-  <div class="component-title">Institutions and regulated entities</div>
-  <p class="component-desc">Banks, asset managers, and funds tokenizing real-world assets need cryptographic guarantees rather than trust assumptions. They also need audit trails that satisfy regulators without depending on institutional cooperation to produce them. Paxiom provides both — mathematical verification of cross-chain state and a permanent tamper-evident record of every transaction stored on decentralized infrastructure that no party can alter or delete. Compliance by architecture rather than policy.</p>
-</div>
 <h2>Roadmap</h2>
 <p>
 Mainnet OApp deployment on Arbitrum and Base is the immediate next milestone. AO execution coordinator processes will monitor the live scanner and trigger trades autonomously without human intervention.
