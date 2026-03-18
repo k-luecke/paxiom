@@ -3,22 +3,74 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paxiom — Trustless Cross-Chain Infrastructure</title>
+<title>Paxiom — Proof Over Trust</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 80px auto; padding: 0 24px; color: #1a1a1a; }
-  h1 { font-size: 32px; font-weight: 600; margin-bottom: 8px; }
-  p { font-size: 18px; line-height: 1.6; color: #444; }
-  .tag { display: inline-block; background: #f0f0f0; padding: 4px 12px; border-radius: 20px; font-size: 13px; margin: 4px 2px; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 760px;
+    margin: 100px auto;
+    padding: 0 24px;
+    color: #111;
+    background: #fff;
+  }
+  .logo {
+    width: 72px;
+    margin-bottom: 24px;
+  }
+  h1 {
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+  .tagline {
+    font-size: 16px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 32px;
+  }
+  p {
+    font-size: 18px;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 16px;
+  }
+  .tags {
+    margin-top: 32px;
+  }
+  .tag {
+    display: inline-block;
+    background: #f2f2f2;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    margin: 4px 6px 0 0;
+    letter-spacing: 0.04em;
+  }
 </style>
 </head>
 <body>
-<h1>Paxiom</h1>
-<p>Trustless cross-chain execution and verification infrastructure built on zero-knowledge proofs, permanent autonomous compute, and cross-chain messaging.</p>
-<p>Eliminating the trusted intermediary at every layer of cross-chain finance.</p>
-<div>
+<svg class="logo" viewBox="0 0 512 512" fill="none">
+  <circle cx="256" cy="256" r="220" stroke="black" stroke-width="16"/>
+  <polygon points="256,100 120,360 392,360" stroke="black" stroke-width="16" fill="none"/>
+  <polygon points="256,180 170,330 342,330" stroke="black" stroke-width="16" fill="none"/>
+  <polygon points="256,240 210,310 302,310" stroke="black" stroke-width="16" fill="none"/>
+  <circle cx="256" cy="275" r="10" fill="black"/>
+</svg>
+<h1>PAXIOM</h1>
+<div class="tagline">Proof Over Trust</div>
+<p>
+Trustless cross-chain execution and verification infrastructure built on zero-knowledge proofs,
+permanent autonomous compute, and cross-chain messaging.
+</p>
+<p>
+Eliminating the trusted intermediary at every layer of cross-chain finance.
+</p>
+<div class="tags">
   <span class="tag">Cross-chain execution</span>
   <span class="tag">ZK verification</span>
-  <span class="tag">AO autonomous compute</span>
+  <span class="tag">Autonomous compute</span>
   <span class="tag">Arbitrum</span>
   <span class="tag">Base</span>
   <span class="tag">Optimism</span>
