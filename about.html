@@ -141,6 +141,28 @@
       color: #2e7d32;
     }
   }
+  .milestone {
+    margin-bottom: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .milestone-date {
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    padding-top: 2px;
+    min-width: 80px;
+  }
+  .milestone-text {
+    font-size: 14px;
+    color: var(--subtle);
+    line-height: 1.5;
+  }
   .footnote {
     margin-top: 48px;
     font-size: 13px;
@@ -202,6 +224,11 @@ Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus 
 </div>
 
 <div class="component">
+  <div class="component-title">PaxiomPool</div>
+  <p class="component-desc">Unified cross-chain liquidity pool deployed on Optimism Sepolia. Accepts USDC deposits from liquidity providers, issues loans against 10% collateral, coordinates execution notification to peer chains via LayerZero, and distributes fees — 70% to LPs, 30% to protocol. First loan issued and repaid on March 18, 2026. Protocol fee collected on first cycle.</p>
+</div>
+
+<div class="component">
   <div class="component-title">OApp coordination layer</div>
   <p class="component-desc">LayerZero OApp contracts deployed on Optimism Sepolia and Base Sepolia. Cross-chain opportunity messages sent and received on-chain — confirmed delivery March 18, 2026. Coordinates execution across chains without a trusted intermediary routing messages.</p>
 </div>
@@ -220,6 +247,13 @@ Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus 
 
 <div class="contract">
   <div class="contract-label">Optimism Sepolia</div>
+  <div class="contract-name">PaxiomPool <span class="status live">live</span></div>
+  <code class="contract-address">0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92</code>
+  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/address/0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92" target="_blank">View on Etherscan →</a>
+</div>
+
+<div class="contract">
+  <div class="contract-label">Optimism Sepolia</div>
   <div class="contract-name">PaxiomOApp <span class="status live">live</span></div>
   <code class="contract-address">0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F</code>
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/address/0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F" target="_blank">View on Etherscan →</a>
@@ -234,17 +268,46 @@ Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus 
 
 <div class="contract">
   <div class="contract-label">Confirmed cross-chain message</div>
-  <div class="contract-name">Optimism → Base <span class="status live">verified</span></div>
+  <div class="contract-name">Optimism -> Base <span class="status live">verified</span></div>
   <code class="contract-address">0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936</code>
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936" target="_blank">View transaction →</a>
 </div>
 
+<div class="contract">
+  <div class="contract-label">First PaxiomPool loan + repayment</div>
+  <div class="contract-name">Loan cycle complete <span class="status live">verified</span></div>
+  <code class="contract-address">0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62</code>
+  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62" target="_blank">View repayment transaction →</a>
+</div>
+
+<h2>Milestones</h2>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 16, 2026</div>
+  <div class="milestone-text">GPU benchmark completed — RTX PRO 6000 confirmed at 1,818 ZK proofs per hour</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 17, 2026</div>
+  <div class="milestone-text">Live cross-chain price scanner deployed — 13 pools across Arbitrum, Optimism, and Base. 539+ opportunities logged in first 1.5 days with peak spread of 0.7202%</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 18, 2026</div>
+  <div class="milestone-text">PaxiomOApp deployed and peered on Optimism Sepolia and Base Sepolia — first verified cross-chain message delivered</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 18, 2026</div>
+  <div class="milestone-text">PaxiomPool deployed on Optimism Sepolia — first loan issued, repaid, and protocol fee collected in same day</div>
+</div>
+
 <h2>Roadmap</h2>
 <p>
-Mainnet OApp deployment on Arbitrum and Base is the immediate next milestone. AO execution coordinator processes will monitor the live scanner and trigger trades autonomously without human intervention.
+Mainnet OApp and PaxiomPool deployment on Arbitrum and Base is the immediate next milestone. AO execution coordinator processes will monitor the live scanner and trigger trades autonomously without human intervention.
 </p>
 <p>
-PaxiomPool v1 follows — a unified cross-chain liquidity pool using OApp coordination for execution and a ZK checkpoint proof for repayment verification. This is the first version of trustless cross-chain flash loan infrastructure.
+PaxiomPool v2 adds ZK checkpoint proof verification for repayment — replacing LayerZero validator trust with mathematical proof of cross-chain execution state.
 </p>
 <p>
 The long-term trust model is a recursive zero-knowledge proof of the entire Ethereum consensus history from genesis to current head, stored permanently on Arweave. No checkpoint authority. No validator set. Mathematical verification of every Ethereum block since genesis. No cross-chain protocol has achieved this. Paxiom is architecting toward it as a concrete funded milestone.
