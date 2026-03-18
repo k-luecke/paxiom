@@ -13,6 +13,10 @@
     padding: 0 24px;
     color: #111;
     background: #fff;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .logo {
@@ -71,9 +75,38 @@
   }
 
   .footnote {
-    margin-top: 40px;
+    margin-top: 48px;
     font-size: 13px;
-    color: #888;
+    color: #666;
+  }
+
+  .section {
+    margin-top: 72px;
+  }
+
+  .section h2 {
+    font-size: 18px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  .block {
+    margin-bottom: 24px;
+  }
+
+  .block-title {
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 6px;
+  }
+
+  .block p {
+    font-size: 16px;
+    color: #444;
+    margin: 0;
   }
 </style>
 </head>
@@ -129,6 +162,32 @@ No relayers. No validators. No trusted intermediaries.
 <p class="footnote">
 No checkpoints. No consensus trust assumptions. Verifiable from genesis.
 </p>
+
+<!-- HOW IT WORKS -->
+<div class="section">
+  <h2>How It Works</h2>
+
+  <div class="block">
+    <div class="block-title">Verification</div>
+    <p>
+      Recursive zero-knowledge proofs verify Ethereum consensus from genesis with no checkpoint assumptions.
+    </p>
+  </div>
+
+  <div class="block">
+    <div class="block-title">Compute</div>
+    <p>
+      Autonomous processes generate and store proofs permanently on decentralized infrastructure with no operator control.
+    </p>
+  </div>
+
+  <div class="block">
+    <div class="block-title">Execution</div>
+    <p>
+      Cross-chain actions are authorized by cryptographic proof of state, not trusted relayers or validator sets.
+    </p>
+  </div>
+</div>
 
 </body>
 </html>
