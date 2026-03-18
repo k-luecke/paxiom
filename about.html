@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paxiom — About</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #111;
+    --subtle: #333;
+    --muted: #666;
+    --faint: #888;
+    --tag-bg: #f2f2f2;
+    --tag-text: #111;
+    --stroke: black;
+    --border: #e5e5e5;
+    --code-bg: #f6f6f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0d;
+      --text: #eaeaea;
+      --subtle: #ccc;
+      --muted: #999;
+      --faint: #666;
+      --tag-bg: #1a1a1a;
+      --tag-text: #eaeaea;
+      --stroke: white;
+      --border: #222;
+      --code-bg: #161616;
+    }
+  }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 680px;
+    margin: 72px auto;
+    padding: 0 24px;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .back {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    margin-bottom: 48px;
+  }
+  .back:hover { color: var(--text); }
+  h2 {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 48px 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2:first-of-type { margin-top: 0; }
+  p {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--subtle);
+    margin-bottom: 14px;
+  }
+  .component {
+    margin-bottom: 28px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .component-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+  }
+  .component-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  .contract {
+    margin-bottom: 20px;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .contract-label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 6px;
+  }
+  .contract-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .contract-address {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--code-bg);
+    padding: 6px 10px;
+    border-radius: 4px;
+    display: block;
+    margin-bottom: 10px;
+    word-break: break-all;
+  }
+  .explorer-link {
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+  }
+  .explorer-link:hover { color: var(--text); }
+  .status {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--tag-bg);
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .status.live {
+    background: #0a2a0a;
+    color: #4caf50;
+  }
+  @media (prefers-color-scheme: light) {
+    .status.live {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+  }
+  .footnote {
+    margin-top: 48px;
+    font-size: 13px;
+    color: var(--faint);
+  }
+</style>
+</head>
+<body>
+
+<a class="back" href="index.html">← Paxiom</a>
+
+<h2>What we're building</h2>
+<p>
+Paxiom is a cross-chain execution and verification infrastructure protocol. The core problem it solves is trust — every existing cross-chain protocol relies on a trusted intermediary at some point in its verification stack. Relayers, validator sets, multisig committees, and oracle networks all introduce a single point of trust and therefore a single point of failure.
+</p>
+<p>
+Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus state, permanent autonomous compute processes, and cross-chain messaging into a stack where no single party can halt, censor, or corrupt the verification layer.
+</p>
+
+<h2>Components</h2>
+
+<div class="component">
+  <div class="component-title">Cross-chain price scanner</div>
+  <p class="component-desc">Continuous monitoring of 13 liquidity pools across Arbitrum, Optimism, and Base. Detects structural pricing inefficiencies with velocity tracking — distinguishing capturable opportunities from noise. Over 2,100 opportunities logged with spread, direction, and persistence data.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">OApp coordination layer</div>
+  <p class="component-desc">LayerZero OApp contracts deployed on Optimism Sepolia and Base Sepolia. Cross-chain opportunity messages sent and received on-chain — confirmed delivery March 18, 2026. Coordinates execution across chains without a trusted intermediary routing messages.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">Flash loan execution contract</div>
+  <p class="component-desc">Solidity contract integrating Aave V3 flash loans, Uniswap V3, and Aerodrome on Base. Fork-tested against live Base mainnet state. Demonstrates full execution mechanics — borrow, swap, repay — before capital deployment.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">AO autonomous compute layer</div>
+  <p class="component-desc">Execution coordination runs on AO — a permissionless autonomous compute environment on Arweave. Processes run permanently with no controlling party. Every coordination decision is recorded in a tamper-evident ledger on Arweave, accessible to anyone. Compliance by architecture, not policy.</p>
+</div>
+
+<h2>Deployed contracts</h2>
+
+<div class="contract">
+  <div class="contract-label">Optimism Sepolia</div>
+  <div class="contract-name">PaxiomOApp <span class="status live">live</span></div>
+  <code class="contract-address">0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F</code>
+  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/address/0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F" target="_blank">View on Etherscan →</a>
+</div>
+
+<div class="contract">
+  <div class="contract-label">Base Sepolia</div>
+  <div class="contract-name">PaxiomOApp <span class="status live">live</span></div>
+  <code class="contract-address">0x607DB3774343Abc650Ef31d9414bCA9D24b0C254</code>
+  <a class="explorer-link" href="https://sepolia.basescan.org/address/0x607DB3774343Abc650Ef31d9414bCA9D24b0C254" target="_blank">View on Basescan →</a>
+</div>
+
+<div class="contract">
+  <div class="contract-label">Confirmed cross-chain message</div>
+  <div class="contract-name">Optimism → Base <span class="status live">verified</span></div>
+  <code class="contract-address">0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936</code>
+  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936" target="_blank">View transaction →</a>
+</div>
+
+<h2>Roadmap</h2>
+<p>
+Mainnet OApp deployment on Arbitrum and Base is the immediate next milestone. AO execution coordinator processes will monitor the live scanner and trigger trades autonomously without human intervention.
+</p>
+<p>
+PaxiomPool v1 follows — a unified cross-chain liquidity pool using OApp coordination for execution and a ZK checkpoint proof for repayment verification. This is the first version of trustless cross-chain flash loan infrastructure.
+</p>
+<p>
+The long-term trust model is a recursive zero-knowledge proof of the entire Ethereum consensus history from genesis to current head, stored permanently on Arweave. No checkpoint authority. No validator set. Mathematical verification of every Ethereum block since genesis. No cross-chain protocol has achieved this. Paxiom is architecting toward it as a concrete funded milestone.
+</p>
+
+<p class="footnote">
+No checkpoints. No consensus trust assumptions. Verifiable from genesis.
+</p>
+
+</body>
+</html>
