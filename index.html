@@ -4,151 +4,136 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paxiom — Proof Over Trust</title>
-
 <style>
+  :root {
+    --bg: #ffffff;
+    --text: #111;
+    --subtle: #333;
+    --muted: #666;
+    --faint: #888;
+    --tag-bg: #f2f2f2;
+    --tag-text: #111;
+    --stroke: black;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0d;
+      --text: #eaeaea;
+      --subtle: #ccc;
+      --muted: #999;
+      --faint: #666;
+      --tag-bg: #1a1a1a;
+      --tag-text: #eaeaea;
+      --stroke: white;
+    }
+  }
   body {
     font-family: system-ui, -apple-system, sans-serif;
     max-width: 680px;
     margin: 72px auto;
     padding: 0 24px;
-    color: #111;
-    background: #fff;
-
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    color: var(--text);
+    background: var(--bg);
   }
-
   .logo {
     width: 88px;
     margin-bottom: 32px;
   }
-
   .eyebrow {
     font-size: 13px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #666;
+    color: var(--muted);
     margin-bottom: 20px;
   }
-
   h1 {
     font-size: 40px;
     font-weight: 600;
     letter-spacing: 0.08em;
     margin-bottom: 4px;
+    color: var(--text);
   }
-
   .tagline {
     font-size: 14px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #555;
+    color: var(--muted);
     margin-bottom: 12px;
   }
-
   .anchor {
     font-size: 15px;
-    color: #666;
+    color: var(--muted);
     margin-bottom: 24px;
   }
-
   p {
     font-size: 18px;
     line-height: 1.6;
-    color: #333;
+    color: var(--subtle);
     margin-bottom: 16px;
   }
-
   .tags {
     margin-top: 32px;
   }
-
   .tag {
     display: inline-block;
-    background: #f2f2f2;
+    background: var(--tag-bg);
+    color: var(--tag-text);
     padding: 6px 12px;
     border-radius: 20px;
     font-size: 12px;
     margin: 4px 6px 0 0;
     letter-spacing: 0.04em;
   }
-
   .footnote {
-    margin-top: 48px;
+    margin-top: 40px;
     font-size: 13px;
-    color: #666;
+    color: var(--faint);
   }
-
-  .section {
-    margin-top: 72px;
-  }
-
-  .section h2 {
-    font-size: 18px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 24px;
-  }
-
-  .block {
-    margin-bottom: 24px;
-  }
-
-  .block-title {
+  .github {
+    display: inline-block;
+    margin-top: 32px;
     font-size: 14px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #555;
-    margin-bottom: 6px;
+    text-decoration: none;
+    color: var(--muted);
+    border-bottom: 1px solid transparent;
+    transition: border 0.2s ease, color 0.2s ease;
   }
-
-  .block p {
-    font-size: 16px;
-    color: #444;
-    margin: 0;
+  .github:hover {
+    color: var(--text);
+    border-bottom: 1px solid var(--text);
+  }
+  .triangle {
+    opacity: 0;
+    animation: fadeIn 0.6s ease forwards;
+  }
+  .triangle:nth-child(1) { animation-delay: 0.2s; }
+  .triangle:nth-child(2) { animation-delay: 0.4s; }
+  .triangle:nth-child(3) { animation-delay: 0.6s; }
+  .dot { animation-delay: 0.8s; }
+  @keyframes fadeIn {
+    to { opacity: 1; }
   }
 </style>
 </head>
-
 <body>
-
-<!-- LOGO -->
 <svg class="logo" viewBox="0 0 512 512" fill="none">
-  <circle cx="256" cy="256" r="210" stroke="black" stroke-width="16"/>
-  <polygon points="256,100 120,360 392,360" stroke="black" stroke-width="16" fill="none"/>
-  <polygon points="256,180 170,330 342,330" stroke="black" stroke-width="16" fill="none"/>
-  <polygon points="256,240 210,310 302,310" stroke="black" stroke-width="16" fill="none"/>
-  <circle cx="256" cy="275" r="10" fill="black"/>
+  <circle cx="256" cy="256" r="210" stroke="var(--stroke)" stroke-width="16"/>
+  <polygon class="triangle" points="256,100 120,360 392,360" stroke="var(--stroke)" stroke-width="16" fill="none"/>
+  <polygon class="triangle" points="256,180 170,330 342,330" stroke="var(--stroke)" stroke-width="16" fill="none"/>
+  <polygon class="triangle" points="256,240 210,310 302,310" stroke="var(--stroke)" stroke-width="16" fill="none"/>
+  <circle class="triangle dot" cx="256" cy="275" r="10" fill="var(--stroke)"/>
 </svg>
-
-<!-- EYEBROW -->
-<p class="eyebrow">
-A verification primitive for cross-chain systems
-</p>
-
-<!-- TITLE -->
+<p class="eyebrow">A verification primitive for cross-chain systems</p>
 <h1>PAXIOM</h1>
-
-<!-- TAGLINE -->
 <div class="tagline">Proof Over Trust</div>
-
-<!-- ANCHOR -->
-<p class="anchor">
-Mathematical verification of cross-chain state.
-</p>
-
-<!-- DESCRIPTION -->
+<p class="anchor">Mathematical verification of cross-chain state.</p>
 <p>
 Trustless cross-chain execution and verification infrastructure built on zero-knowledge proofs,
 permanent autonomous compute, and cross-chain messaging.
 </p>
-
 <p>
 No relayers. No validators. No trusted intermediaries.
 </p>
-
-<!-- TAGS -->
 <div class="tags">
   <span class="tag">Cross-chain execution</span>
   <span class="tag">ZK verification</span>
@@ -157,37 +142,11 @@ No relayers. No validators. No trusted intermediaries.
   <span class="tag">Base</span>
   <span class="tag">Optimism</span>
 </div>
-
-<!-- FOOTNOTE -->
 <p class="footnote">
 No checkpoints. No consensus trust assumptions. Verifiable from genesis.
 </p>
-
-<!-- HOW IT WORKS -->
-<div class="section">
-  <h2>How It Works</h2>
-
-  <div class="block">
-    <div class="block-title">Verification</div>
-    <p>
-      Recursive zero-knowledge proofs verify Ethereum consensus from genesis with no checkpoint assumptions.
-    </p>
-  </div>
-
-  <div class="block">
-    <div class="block-title">Compute</div>
-    <p>
-      Autonomous processes generate and store proofs permanently on decentralized infrastructure with no operator control.
-    </p>
-  </div>
-
-  <div class="block">
-    <div class="block-title">Execution</div>
-    <p>
-      Cross-chain actions are authorized by cryptographic proof of state, not trusted relayers or validator sets.
-    </p>
-  </div>
-</div>
-
+<a class="github" href="https://github.com/k-luecke/paxiom" target="_blank">
+  View on GitHub →
+</a>
 </body>
 </html>
