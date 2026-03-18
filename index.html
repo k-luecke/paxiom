@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paxiom — Proof Over Trust</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
   body {
     font-family: system-ui, -apple-system, sans-serif;
@@ -13,28 +15,39 @@
     color: #111;
     background: #fff;
   }
+  .paxiom-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+  .paxiom-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 28px;
+    letter-spacing: 0.12em;
+    font-weight: 500;
+  }
+  .paxiom-tagline {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+  }
   .logo {
     width: 72px;
-    margin-bottom: 24px;
-  }
-  h1 {
-    font-size: 40px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    margin-bottom: 8px;
-  }
-  .tagline {
-    font-size: 16px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #666;
-    margin-bottom: 32px;
   }
   p {
     font-size: 18px;
     line-height: 1.6;
     color: #333;
     margin-bottom: 16px;
+  }
+  .subtitle {
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    color: #888;
+    margin-bottom: 32px;
   }
   .tags {
     margin-top: 32px;
@@ -62,16 +75,18 @@
 </style>
 </head>
 <body>
-<svg class="logo" viewBox="0 0 512 512" fill="none">
-  <circle cx="256" cy="256" r="220" stroke="black" stroke-width="16"/>
-  <polygon class="triangle" points="256,100 120,360 392,360" stroke="black" stroke-width="16" fill="none"/>
-  <polygon class="triangle" points="256,180 170,330 342,330" stroke="black" stroke-width="16" fill="none"/>
-  <polygon class="triangle" points="256,240 210,310 302,310" stroke="black" stroke-width="16" fill="none"/>
-  <circle class="triangle dot" cx="256" cy="275" r="10" fill="black"/>
-</svg>
-<h1>PAXIOM</h1>
-<div class="tagline">Proof Over Trust</div>
-<p style="font-size:14px; letter-spacing:0.1em; color:#888;">A verification primitive for cross-chain systems</p>
+<div class="paxiom-logo">
+  <svg class="logo" viewBox="0 0 512 512" fill="none">
+    <circle cx="256" cy="256" r="220" stroke="black" stroke-width="16"/>
+    <polygon class="triangle" points="256,100 120,360 392,360" stroke="black" stroke-width="16" fill="none"/>
+    <polygon class="triangle" points="256,180 170,330 342,330" stroke="black" stroke-width="16" fill="none"/>
+    <polygon class="triangle" points="256,240 210,310 302,310" stroke="black" stroke-width="16" fill="none"/>
+    <circle class="triangle dot" cx="256" cy="275" r="10" fill="black"/>
+  </svg>
+  <div class="paxiom-title">PAXIOM</div>
+  <div class="paxiom-tagline">Proof Over Trust</div>
+</div>
+<p class="subtitle">A verification primitive for cross-chain systems</p>
 <p>
 Trustless cross-chain execution and verification infrastructure built on zero-knowledge proofs,
 permanent autonomous compute, and cross-chain messaging.
