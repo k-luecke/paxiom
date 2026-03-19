@@ -11,9 +11,6 @@
     --subtle: #333;
     --muted: #666;
     --faint: #888;
-    --tag-bg: #f2f2f2;
-    --tag-text: #111;
-    --stroke: black;
     --border: #e5e5e5;
     --code-bg: #f6f6f6;
   }
@@ -24,9 +21,6 @@
       --subtle: #ccc;
       --muted: #999;
       --faint: #666;
-      --tag-bg: #1a1a1a;
-      --tag-text: #eaeaea;
-      --stroke: white;
       --border: #222;
       --code-bg: #161616;
     }
@@ -125,21 +119,14 @@
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 20px;
-    background: var(--tag-bg);
-    color: var(--muted);
+    background: #0a2a0a;
+    color: #4caf50;
     letter-spacing: 0.04em;
     margin-left: 8px;
     vertical-align: middle;
   }
-  .status.live {
-    background: #0a2a0a;
-    color: #4caf50;
-  }
   @media (prefers-color-scheme: light) {
-    .status.live {
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
+    .status { background: #e8f5e9; color: #2e7d32; }
   }
   .milestone {
     margin-bottom: 12px;
@@ -163,6 +150,16 @@
     color: var(--subtle);
     line-height: 1.5;
   }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); }
+  .stat-value { color: var(--text); font-weight: 500; }
   .footnote {
     margin-top: 48px;
     font-size: 13px;
@@ -174,32 +171,14 @@
 
 <a class="back" href="index.html">← Paxiom</a>
 
-  <h2>What we're building</h2>
-<p>
-Paxiom is a cross-chain execution and verification infrastructure protocol. The core problem it solves is trust — every existing cross-chain protocol relies on a trusted intermediary at some point in its verification stack. Relayers, validator sets, multisig committees, and oracle networks all introduce a single point of trust and therefore a single point of failure.
-</p>
-<p>
-Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus state, permanent autonomous compute processes, and cross-chain messaging into a stack where no single party can halt, censor, or corrupt the verification layer.
-</p>
-  
 <h2>Plain English</h2>
-<p>
-Blockchains are separate networks that cannot natively talk to each other. Moving value between them — say from Ethereum to Arbitrum — currently requires trusting a third party to relay the message. That third party is the attack surface. Over $2 billion has been stolen from cross-chain bridges because of it. Someone compromised the trusted middleman and the money was gone.
-</p>
-<p>
-Paxiom removes the middleman entirely. Instead of asking a third party "did this transaction happen on the other chain?", Paxiom generates a mathematical proof that it happened. The proof is verifiable by anyone, requires no trust, and is stored permanently so it cannot be altered or deleted.
-</p>
-<p>
-Think of it like the difference between a bank telling you your balance and being able to count the money yourself. One requires trust. The other requires math. Paxiom is the math version.
-</p>
-<p>
-The practical application is cross-chain finance — moving capital between blockchain networks to capture price differences, execute loans, and settle transactions without exposing users to the risk of a trusted intermediary being compromised. The same infrastructure also produces a permanent audit trail of every transaction, which is directly useful for regulatory compliance — not because someone agreed to keep records, but because the system is architecturally incapable of losing them.
-</p>
+<p>Blockchains are separate networks that cannot natively talk to each other. Moving value between them — say from Ethereum to Arbitrum — currently requires trusting a third party to relay the message. That third party is the attack surface. Over $2 billion has been stolen from cross-chain bridges because of it. Someone compromised the trusted middleman and the money was gone.</p>
+<p>Paxiom removes the middleman entirely. Instead of asking a third party "did this transaction happen on the other chain?", Paxiom generates a mathematical proof that it happened. The proof is verifiable by anyone, requires no trust, and is stored permanently so it cannot be altered or deleted.</p>
+<p>Think of it like the difference between a bank telling you your balance and being able to count the money yourself. One requires trust. The other requires math. Paxiom is the math version.</p>
+<p>The practical application is cross-chain finance — moving capital between blockchain networks to capture price differences, execute loans, and settle transactions without exposing users to the risk of a trusted intermediary being compromised. The same infrastructure also produces a permanent audit trail of every transaction, which is directly useful for regulatory compliance — not because someone agreed to keep records, but because the system is architecturally incapable of losing them.</p>
 
 <h2>Who uses it and why</h2>
-<p>
-Anyone who moves value between blockchain networks has a trust problem today. Paxiom solves it for three groups in particular.
-</p>
+<p>Anyone who moves value between blockchain networks has a trust problem today. Paxiom solves it for three groups in particular.</p>
 
 <div class="component">
   <div class="component-title">Traders and arbitrageurs</div>
@@ -216,16 +195,58 @@ Anyone who moves value between blockchain networks has a trust problem today. Pa
   <p class="component-desc">Banks, asset managers, and funds tokenizing real-world assets need cryptographic guarantees rather than trust assumptions. They also need audit trails that satisfy regulators without depending on institutional cooperation to produce them. Paxiom provides both — mathematical verification of cross-chain state and a permanent tamper-evident record of every transaction stored on decentralized infrastructure that no party can alter or delete. Compliance by architecture rather than policy.</p>
 </div>
 
+<h2>What we're building</h2>
+<p>Paxiom is a cross-chain execution and verification infrastructure protocol. The core problem it solves is trust — every existing cross-chain protocol relies on a trusted intermediary at some point in its verification stack. Relayers, validator sets, multisig committees, and oracle networks all introduce a single point of trust and therefore a single point of failure.</p>
+<p>Paxiom eliminates this by combining zero-knowledge proofs of Ethereum consensus state, permanent autonomous compute processes, and cross-chain messaging into a stack where no single party can halt, censor, or corrupt the verification layer.</p>
+
+<h2>Live infrastructure stats</h2>
+<div class="component">
+  <div class="stat-row">
+    <span class="stat-label">Opportunities detected</span>
+    <span class="stat-value">2,400+ in 3 days</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Peak spread recorded</span>
+    <span class="stat-value">0.7202% ETH</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Simultaneous execution timing</span>
+    <span class="stat-value">3ms gap between chains</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">AO gateway network</span>
+    <span class="stat-value">9 nodes, geographically distributed</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Compliance events logged</span>
+    <span class="stat-value">Permanent on Arweave</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Pools monitored</span>
+    <span class="stat-value">13 across Arbitrum, Optimism, Base</span>
+  </div>
+</div>
+
 <h2>Components</h2>
 
 <div class="component">
   <div class="component-title">Cross-chain price scanner</div>
-  <p class="component-desc">Continuous monitoring of 13 liquidity pools across Arbitrum, Optimism, and Base. Detects structural pricing inefficiencies with velocity tracking — distinguishing capturable opportunities from noise. Over 2,100 opportunities logged with spread, direction, and persistence data.</p>
+  <p class="component-desc">Continuous monitoring of 13 liquidity pools across Arbitrum, Optimism, and Base. Detects structural pricing inefficiencies with velocity tracking — distinguishing capturable opportunities from noise. Over 2,400 opportunities logged with spread, direction, and persistence data.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">AO autonomous execution pipeline</div>
+  <p class="component-desc">A fully autonomous execution pipeline running on AO — a permissionless compute environment on Arweave. The opportunity monitor process evaluates every detected spread, applies cooldown and threshold logic, and fires execution signals without any human intervention. Connected to 9 geographically distributed Arweave gateways for resilience. Every signal is permanently logged to the compliance process.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">Simultaneous cross-chain execution</div>
+  <p class="component-desc">When the AO monitor fires an execution signal, both legs of the trade are constructed and broadcast simultaneously — 3ms timing gap between chain A and chain B measured in simulation. This eliminates the slippage risk that makes sequential cross-chain execution impractical. Both transactions land in the same block window on their respective chains.</p>
 </div>
 
 <div class="component">
   <div class="component-title">PaxiomPool</div>
-  <p class="component-desc">Unified cross-chain liquidity pool deployed on Optimism Sepolia. Accepts USDC deposits from liquidity providers, issues loans against 10% collateral, coordinates execution notification to peer chains via LayerZero, and distributes fees — 70% to LPs, 30% to protocol. First loan issued and repaid on March 18, 2026. Protocol fee collected on first cycle.</p>
+  <p class="component-desc">Unified cross-chain liquidity pool deployed on Optimism Sepolia. Accepts USDC deposits from liquidity providers, issues loans against 10% collateral, coordinates execution notification to peer chains via LayerZero, and distributes fees — 70% to LPs, 30% to protocol. First full loan cycle completed March 18, 2026 — loan issued, repaid within timeout, protocol fee collected and distributed.</p>
 </div>
 
 <div class="component">
@@ -239,57 +260,70 @@ Anyone who moves value between blockchain networks has a trust problem today. Pa
 </div>
 
 <div class="component">
-  <div class="component-title">AO autonomous compute layer</div>
-  <p class="component-desc">Execution coordination runs on AO — a permissionless autonomous compute environment on Arweave. Processes run permanently with no controlling party. Every coordination decision is recorded in a tamper-evident ledger on Arweave, accessible to anyone. Compliance by architecture, not policy.</p>
+  <div class="component-title">AO compliance layer</div>
+  <p class="component-desc">Every contract deployment, cross-chain message, loan cycle, and execution signal is logged permanently to an AO process on Arweave. No party including the protocol developers can alter or delete this record. Accessible to anyone. Compliance by architecture rather than policy.</p>
 </div>
 
 <h2>Deployed contracts</h2>
 
 <div class="contract">
   <div class="contract-label">Optimism Sepolia</div>
-  <div class="contract-name">PaxiomPool <span class="status live">live</span></div>
+  <div class="contract-name">PaxiomPool <span class="status">live</span></div>
   <code class="contract-address">0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92</code>
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/address/0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92" target="_blank">View on Etherscan →</a>
 </div>
 
 <div class="contract">
   <div class="contract-label">Optimism Sepolia</div>
-  <div class="contract-name">PaxiomOApp <span class="status live">live</span></div>
+  <div class="contract-name">PaxiomOApp <span class="status">live</span></div>
   <code class="contract-address">0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F</code>
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/address/0x5fE0c2d112cf4E579271DD1f864C86dC193a1d0F" target="_blank">View on Etherscan →</a>
 </div>
 
 <div class="contract">
   <div class="contract-label">Base Sepolia</div>
-  <div class="contract-name">PaxiomOApp <span class="status live">live</span></div>
+  <div class="contract-name">PaxiomOApp <span class="status">live</span></div>
   <code class="contract-address">0x607DB3774343Abc650Ef31d9414bCA9D24b0C254</code>
   <a class="explorer-link" href="https://sepolia.basescan.org/address/0x607DB3774343Abc650Ef31d9414bCA9D24b0C254" target="_blank">View on Basescan →</a>
 </div>
 
 <div class="contract">
   <div class="contract-label">Confirmed cross-chain message</div>
-  <div class="contract-name">Optimism -> Base <span class="status live">verified</span></div>
+  <div class="contract-name">Optimism -> Base <span class="status">verified</span></div>
   <code class="contract-address">0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936</code>
   <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936" target="_blank">View transaction →</a>
 </div>
 
 <div class="contract">
-  <div class="contract-label">First PaxiomPool loan + repayment</div>
-  <div class="contract-name">Loan cycle complete <span class="status live">verified</span></div>
+  <div class="contract-label">First PaxiomPool loan cycle</div>
+  <div class="contract-name">Loan issued, repaid, fee collected <span class="status">verified</span></div>
   <code class="contract-address">0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62</code>
-  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62" target="_blank">View repayment transaction →</a>
+  <a class="explorer-link" href="https://sepolia-optimism.etherscan.io/tx/0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62" target="_blank">View repayment →</a>
+</div>
+
+<div class="contract">
+  <div class="contract-label">AO compliance process</div>
+  <div class="contract-name">Permanent audit log <span class="status">live</span></div>
+  <code class="contract-address">w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I</code>
+  <a class="explorer-link" href="https://arweave.net/w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I" target="_blank">View on Arweave →</a>
+</div>
+
+<div class="contract">
+  <div class="contract-label">AO opportunity monitor</div>
+  <div class="contract-name">Autonomous execution coordinator <span class="status">live</span></div>
+  <code class="contract-address">JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg</code>
 </div>
 
 <h2>Milestones</h2>
 
 <div class="milestone">
   <div class="milestone-date">Mar 16, 2026</div>
-  <div class="milestone-text">GPU benchmark completed — RTX PRO 6000 confirmed at 1,818 ZK proofs per hour</div>
+  <div class="milestone-text">GPU benchmark — RTX PRO 6000 confirmed at 1,818 ZK proofs per hour</div>
 </div>
 
 <div class="milestone">
   <div class="milestone-date">Mar 17, 2026</div>
-  <div class="milestone-text">Live cross-chain price scanner deployed — 13 pools across Arbitrum, Optimism, and Base. 539+ opportunities logged in first 1.5 days with peak spread of 0.7202%</div>
+  <div class="milestone-text">Live cross-chain price scanner deployed — 13 pools across Arbitrum, Optimism, and Base. Peak spread 0.7202%</div>
 </div>
 
 <div class="milestone">
@@ -299,23 +333,30 @@ Anyone who moves value between blockchain networks has a trust problem today. Pa
 
 <div class="milestone">
   <div class="milestone-date">Mar 18, 2026</div>
-  <div class="milestone-text">PaxiomPool deployed on Optimism Sepolia — first loan issued, repaid, and protocol fee collected in same day</div>
+  <div class="milestone-text">PaxiomPool deployed — first loan issued, repaid within timeout, protocol fee collected and distributed to LPs</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 18, 2026</div>
+  <div class="milestone-text">AO compliance logger deployed — permanent tamper-evident audit trail live on Arweave</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 19, 2026</div>
+  <div class="milestone-text">AO opportunity monitor deployed — autonomous execution pipeline running with 9-gateway Arweave network</div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 19, 2026</div>
+  <div class="milestone-text">Simultaneous cross-chain execution proven in simulation — 3ms timing gap between chain A and chain B</div>
 </div>
 
 <h2>Roadmap</h2>
-<p>
-Mainnet OApp and PaxiomPool deployment on Arbitrum and Base is the immediate next milestone. AO execution coordinator processes will monitor the live scanner and trigger trades autonomously without human intervention.
-</p>
-<p>
-PaxiomPool v2 adds ZK checkpoint proof verification for repayment — replacing LayerZero validator trust with mathematical proof of cross-chain execution state.
-</p>
-<p>
-The long-term trust model is a recursive zero-knowledge proof of the entire Ethereum consensus history from genesis to current head, stored permanently on Arweave. No checkpoint authority. No validator set. Mathematical verification of every Ethereum block since genesis. No cross-chain protocol has achieved this. Paxiom is architecting toward it as a concrete funded milestone.
-</p>
+<p>Mainnet OApp and PaxiomPool deployment on Arbitrum and Base is the immediate next milestone. The autonomous execution pipeline transitions from simulation to live testnet broadcasts, then mainnet once timing and execution are proven end to end.</p>
+<p>PaxiomPool v2 adds ZK checkpoint proof verification for repayment — replacing LayerZero validator trust with mathematical proof of cross-chain execution state.</p>
+<p>The long-term trust model is a recursive zero-knowledge proof of the entire Ethereum consensus history from genesis to current head, stored permanently on Arweave. No checkpoint authority. No validator set. Mathematical verification of every Ethereum block since genesis. No cross-chain protocol has achieved this. Paxiom is architecting toward it as a concrete funded milestone.</p>
 
-<p class="footnote">
-No checkpoints. No consensus trust assumptions. Verifiable from genesis.
-</p>
+<p class="footnote">No checkpoints. No consensus trust assumptions. Verifiable from genesis.</p>
 
 </body>
 </html>
