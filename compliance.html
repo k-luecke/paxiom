@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paxiom — Compliance Log</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --text: #eaeaea;
+    --subtle: #ccc;
+    --muted: #999;
+    --faint: #555;
+    --border: #222;
+    --code-bg: #161616;
+    --green: #4caf50;
+    --cyan: #26c6da;
+    --yellow: #ffc107;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --text: #111;
+      --subtle: #333;
+      --muted: #666;
+      --faint: #aaa;
+      --border: #e5e5e5;
+      --code-bg: #f6f6f6;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 860px;
+    margin: 72px auto;
+    padding: 0 24px;
+  }
+  .back {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    margin-bottom: 48px;
+  }
+  .back:hover { color: var(--text); }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .logo svg { width: 36px; height: 36px; }
+  .header-text h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .header-text p {
+    font-size: 14px;
+    color: var(--subtle);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .process-id {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--code-bg);
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 32px;
+    word-break: break-all;
+    border: 1px solid var(--border);
+  }
+  .process-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 6px;
+  }
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .stat {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+  }
+  .stat-val {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .stat-val.green { color: var(--green); }
+  .stat-val.cyan  { color: var(--cyan); }
+  .stat-val.yellow { color: var(--yellow); }
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .section-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .refresh-btn {
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    background: none;
+    border: 1px solid var(--border);
+    padding: 3px 10px;
+    border-radius: 3px;
+  }
+  .refresh-btn:hover { color: var(--text); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 48px;
+  }
+  th {
+    text-align: left;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+  td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--subtle);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--code-bg); }
+  .type-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .type-contract   { background: #0a2a1a; color: #4caf50; }
+  .type-message    { background: #0a1a2a; color: #26c6da; }
+  .type-loan       { background: #1a1a0a; color: #ffc107; }
+  .type-signal     { background: #1a0a2a; color: #ce93d8; }
+  .type-broadcast  { background: #2a1a0a; color: #ffb74d; }
+  .type-unknown    { background: var(--code-bg); color: var(--muted); }
+  .tx-link {
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx-link:hover { color: var(--text); }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .pulse {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  .pulse.error { background: #ef5350; animation: none; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.2} }
+  .loading { color: var(--muted); font-size: 14px; padding: 24px 0; }
+  .error-msg { color: #ef5350; font-size: 13px; padding: 12px 0; }
+  .footnote {
+    font-size: 12px;
+    color: var(--faint);
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    line-height: 1.6;
+  }
+  code {
+    font-family: monospace;
+    font-size: 11px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<a class="back" href="index.html">← Paxiom</a>
+
+<div class="header">
+  <div class="logo">
+    <svg viewBox="0 0 512 512" fill="none">
+      <circle cx="256" cy="256" r="210" stroke="var(--text)" stroke-width="16"/>
+      <polygon points="256,100 120,360 392,360" stroke="var(--text)" stroke-width="14" fill="none"/>
+      <polygon points="256,180 170,330 342,330" stroke="var(--text)" stroke-width="14" fill="none"/>
+      <polygon points="256,240 210,310 302,310" stroke="var(--text)" stroke-width="14" fill="none"/>
+      <circle cx="256" cy="275" r="10" fill="var(--text)"/>
+    </svg>
+  </div>
+  <div class="header-text">
+    <h1>Compliance Log</h1>
+    <p>Permanent tamper-evident audit trail. Every protocol action recorded on Arweave.<br>No party — including Paxiom — can alter or delete this record.</p>
+  </div>
+</div>
+
+<div class="process-label">AO Compliance Process</div>
+<div class="process-id">w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I</div>
+
+<div class="stats-row">
+  <div class="stat"><div class="stat-val green" id="stat-total">--</div><div class="stat-label">Total Events</div></div>
+  <div class="stat"><div class="stat-val cyan" id="stat-deployments">--</div><div class="stat-label">Deployments</div></div>
+  <div class="stat"><div class="stat-val yellow" id="stat-messages">--</div><div class="stat-label">Cross-chain msgs</div></div>
+  <div class="stat"><div class="stat-val" id="stat-loans">--</div><div class="stat-label">Loan cycles</div></div>
+</div>
+
+<div class="section-title">
+  Event Log
+  <button class="refresh-btn" onclick="loadLog()">refresh</button>
+</div>
+
+<div class="status-row">
+  <div class="pulse" id="pulse"></div>
+  <span id="status-text">Connecting to AO process...</span>
+</div>
+
+<div id="log-container">
+  <div class="loading">Loading compliance events from Arweave...</div>
+</div>
+
+<p class="footnote">
+  Data is read directly from the AO process <code>w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I</code> running on Arweave.
+  AO is a permissionless autonomous compute environment — this process runs permanently with no controlling party.
+  Every message is stored as an ANS-104 data item on Arweave and cannot be altered or deleted.
+</p>
+
+<script type="module">
+const PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
+const GATEWAYS = [
+  'https://arweave.net',
+  'https://g8way.io',
+  'https://arweave.developerdao.com'
+];
+
+function getTypeClass(type) {
+  if (!type) return 'type-unknown';
+  const t = type.toLowerCase();
+  if (t.includes('deploy') || t.includes('contract')) return 'type-contract';
+  if (t.includes('message') || t.includes('cross')) return 'type-message';
+  if (t.includes('loan') || t.includes('repay')) return 'type-loan';
+  if (t.includes('signal') || t.includes('execution')) return 'type-signal';
+  if (t.includes('broadcast')) return 'type-broadcast';
+  return 'type-unknown';
+}
+
+function getTypeLabel(type) {
+  if (!type || type === 'unknown') return 'event';
+  return type.replace(/_/g, ' ');
+}
+
+function formatTxHash(hash) {
+  if (!hash || hash.length < 10) return '';
+  const isEth = hash.startsWith('0x');
+  if (isEth) {
+    const url = hash.length > 20
+      ? `https://sepolia-optimism.etherscan.io/tx/${hash}`
+      : '#';
+    return `<a class="tx-link" href="${url}" target="_blank">${hash.slice(0,10)}...${hash.slice(-6)}</a>`;
+  }
+  return `<code>${hash.slice(0,10)}...${hash.slice(-6)}</code>`;
+}
+
+function formatTime(ts) {
+  if (!ts) return '--';
+  try {
+    const d = new Date(typeof ts === 'number' && ts > 1e12 ? ts : ts * 1000);
+    return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  } catch(e) { return String(ts); }
+}
+
+async function queryAO(gateway) {
+  const url = `${gateway}/dry-run?process-id=${PROCESS_ID}`;
+  const body = JSON.stringify({
+    Id: '1',
+    Owner: '0000000000000000000000000000000000000000000',
+    Tags: [
+      { name: 'Action', value: 'GetLog' }
+    ],
+    Data: ''
+  });
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  return data;
+}
+
+async function loadLog() {
+  document.getElementById('status-text').textContent = 'Querying AO process...';
+  document.getElementById('pulse').className = 'pulse';
+
+  let lastError = null;
+
+  for (const gateway of GATEWAYS) {
+    try {
+      const data = await queryAO(gateway);
+
+      // Parse the response
+      const messages = data.Messages || [];
+      let events = [];
+
+      for (const msg of messages) {
+        if (msg.Data) {
+          try {
+            const parsed = JSON.parse(msg.Data);
+            if (Array.isArray(parsed)) {
+              events = parsed;
+              break;
+            }
+          } catch(e) {}
+        }
+      }
+
+      // Filter out unknown/debug events
+      const realEvents = events.filter(e => e.type && e.type !== 'unknown');
+
+      // Update stats
+      const deployments = realEvents.filter(e => e.type?.includes('deployment')).length;
+      const messages2   = realEvents.filter(e => e.type?.includes('message')).length;
+      const loans       = realEvents.filter(e => e.type?.includes('loan')).length;
+
+      document.getElementById('stat-total').textContent       = realEvents.length || events.length;
+      document.getElementById('stat-deployments').textContent = deployments;
+      document.getElementById('stat-messages').textContent    = messages2;
+      document.getElementById('stat-loans').textContent       = loans;
+
+      // Render table
+      const displayEvents = (realEvents.length ? realEvents : events).slice().reverse();
+
+      if (!displayEvents.length) {
+        document.getElementById('log-container').innerHTML =
+          '<div class="loading">No events found. The process may need a moment to respond.</div>';
+        document.getElementById('status-text').textContent = `Connected via ${gateway.replace('https://','')}.`;
+        return;
+      }
+
+      let html = '<table><thead><tr><th>#</th><th>Type</th><th>Chain</th><th>Details</th><th>Tx Hash</th><th>Time</th></tr></thead><tbody>';
+
+      for (const e of displayEvents) {
+        const typeClass = getTypeClass(e.type);
+        const typeLabel = getTypeLabel(e.type);
+        const txHtml    = formatTxHash(e.txHash || e.txhash || '');
+        const timeStr   = formatTime(e.timestamp);
+        const details   = (e.details || e.contract || '').slice(0, 60);
+        const chain     = (e.chain || '--').replace('optimism-sepolia', 'OP Sepolia').replace('base-sepolia', 'Base Sepolia');
+
+        html += `<tr>
+          <td style="color:var(--faint)">${e.id || '--'}</td>
+          <td><span class="type-tag ${typeClass}">${typeLabel}</span></td>
+          <td style="font-size:11px;color:var(--muted)">${chain}</td>
+          <td style="font-size:12px">${details}</td>
+          <td>${txHtml}</td>
+          <td style="font-size:11px;color:var(--muted);white-space:nowrap">${timeStr}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      document.getElementById('log-container').innerHTML = html;
+      document.getElementById('status-text').textContent =
+        `Live — ${displayEvents.length} events loaded via ${gateway.replace('https://','')}.`;
+      return;
+
+    } catch(e) {
+      lastError = e;
+      console.warn(`Gateway ${gateway} failed:`, e.message);
+    }
+  }
+
+  // All gateways failed
+  document.getElementById('pulse').className = 'pulse error';
+  document.getElementById('status-text').textContent = 'Could not reach AO process — try refreshing.';
+  document.getElementById('log-container').innerHTML =
+    `<div class="error-msg">All gateways failed. Last error: ${lastError?.message}.<br><br>
+    The process ID is permanently stored on Arweave:<br>
+    <code>w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I</code></div>`;
+}
+
+loadLog();
+setInterval(loadLog, 30000);
+</script>
+
+</body>
+</html>
