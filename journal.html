@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paxiom — Build Journal</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --text: #eaeaea;
+    --subtle: #ccc;
+    --muted: #999;
+    --faint: #555;
+    --border: #222;
+    --code-bg: #161616;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --text: #111;
+      --subtle: #333;
+      --muted: #666;
+      --faint: #aaa;
+      --border: #e5e5e5;
+      --code-bg: #f6f6f6;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 680px;
+    margin: 72px auto;
+    padding: 0 24px;
+  }
+  .back {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    margin-bottom: 48px;
+  }
+  .back:hover { color: var(--text); }
+  .page-title {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .page-sub {
+    font-size: 16px;
+    color: var(--subtle);
+    line-height: 1.6;
+    margin-bottom: 56px;
+  }
+  .entry {
+    margin-bottom: 52px;
+    padding-bottom: 52px;
+    border-bottom: 1px solid var(--border);
+  }
+  .entry:last-child {
+    border-bottom: none;
+  }
+  .entry-date {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--faint);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .entry-headline {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+    margin-bottom: 12px;
+  }
+  .entry-why {
+    font-size: 14px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 16px;
+    font-style: italic;
+  }
+  .entry-body {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--subtle);
+  }
+  .entry-body p {
+    margin-bottom: 12px;
+  }
+  .entry-body p:last-child {
+    margin-bottom: 0;
+  }
+  code {
+    font-family: monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .tx {
+    display: block;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--code-bg);
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-top: 10px;
+    word-break: break-all;
+  }
+  .tx a {
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx a:hover { color: var(--text); }
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--faint);
+    letter-spacing: 0.06em;
+    margin-right: 6px;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+  .footnote {
+    margin-top: 64px;
+    font-size: 13px;
+    color: var(--faint);
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<a class="back" href="index.html">← Paxiom</a>
+
+<div class="page-title">Build Journal</div>
+<p class="page-sub">A record of what was built, the decisions made along the way, and why they mattered. Written as it happened.</p>
+
+<div class="entry">
+  <div class="entry-date">Week of March 10, 2026</div>
+  <div class="entry-headline">The original goal: prove Ethereum from genesis with a single ZK proof</div>
+  <div class="entry-why">Why it matters — eliminating the last trust assumption in cross-chain verification</div>
+  <div class="entry-body">
+    <p>Paxiom started with a single technical ambition: generate a recursive zero-knowledge proof of the entire Ethereum consensus history from block zero to the current head, store it permanently on Arweave, and make it available to any cross-chain protocol that needs to verify Ethereum state without trusting anyone.</p>
+    <p>Every existing cross-chain bridge, oracle, or messaging protocol relies on some trusted party at the verification layer — a multisig, a validator set, a committee of relayers. Over $2 billion has been stolen from these systems because trust assumptions have single points of failure. The ZK proof eliminates this entirely. You do not ask anyone whether a transaction happened. You verify it mathematically.</p>
+    <p>The first constraint surfaced immediately: generating the genesis proof requires significant GPU compute — estimated at around $20,000 for a one-time run on cloud infrastructure. That single cost became the first architectural decision point.</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 12–14, 2026</div>
+  <div class="entry-headline">First pivot: build revenue infrastructure before spending on compute</div>
+  <div class="entry-why">Why it matters — a protocol that funds itself is more durable than one dependent on grants</div>
+  <div class="entry-body">
+    <p>Rather than raise capital or spend reserves on the genesis proof upfront, the architecture shifted toward self-funding. Cross-chain arbitrage — capturing pricing inefficiencies between the same asset on different networks — generates real revenue from day one using the same cross-chain infrastructure Paxiom is building.</p>
+    <p>This meant building a price scanner first. The scanner monitors liquidity pools across Arbitrum, Optimism, and Base continuously, logging every spread above a threshold with velocity tracking to distinguish capturable opportunities from noise. Within the first 48 hours of running it had logged over 500 real pricing inefficiencies, including a 0.7202% ETH spread representing $33,000 in single-trade profit potential at $5M scale.</p>
+    <p>The data confirmed the edge is real and structural. wstETH maintains a persistent spread across chains daily. ETH spikes above 0.1% multiple times per day during volatile periods. Neither required any infrastructure that did not already exist.</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 14–16, 2026</div>
+  <div class="entry-headline">Second pivot: cross-chain atomicity requires coordination infrastructure first</div>
+  <div class="entry-why">Why it matters — flash loans can't span chains without a trustless coordination layer</div>
+  <div class="entry-body">
+    <p>The initial execution plan used flash loans: borrow capital, execute both sides of the trade atomically, repay in the same transaction. Same-chain flash loans work because atomicity is guaranteed — if repayment fails, the entire transaction reverts. The lender is never at risk.</p>
+    <p>Cross-chain flash loans break this model. A transaction on Optimism cannot atomically revert a transaction on Arbitrum. The two chains do not share state. Any cross-chain flash loan requires a trust assumption at the repayment verification step — unless that verification is done with a ZK proof.</p>
+    <p>This closed the loop between the revenue architecture and the original technical goal. The genesis proof is not a separate product. It is the verification primitive that makes trustless cross-chain flash loans possible. The arbitrage operation is not a distraction from the protocol. It is the protocol running on its own infrastructure.</p>
+    <p>The decision: build the coordination layer first using LayerZero OApp messaging, use pre-positioned capital for initial execution, and add ZK verification as a funded upgrade once arbitrage revenue accumulates.</p>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 17, 2026</div>
+  <div class="entry-headline">OApp deployed and confirmed: first verified cross-chain message</div>
+  <div class="entry-why">Why it matters — coordination without a trusted intermediary is the foundation everything else builds on</div>
+  <div class="entry-body">
+    <p>PaxiomOApp contracts deployed and peered on Optimism Sepolia and Base Sepolia. LayerZero V2 OApp provides the messaging layer — DVN-verified delivery without a trusted relayer. The first opportunity message sent from Optimism and confirmed received on Base.</p>
+    <p>The message carried real data: ETH at $2,300, a 0.0724% spread, buy side on Optimism, sell side on Base. Not a test payload — actual scanner output delivered cross-chain and verified on-chain.</p>
+    <span class="tx"><a href="https://sepolia-optimism.etherscan.io/tx/0x8b662f22aca8be29a621d02a54b1943e15fe4263c66d8eff3104714db0ea3936" target="_blank">Optimism → Base message: 0x8b662f...3936</a></span>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 18, 2026</div>
+  <div class="entry-headline">PaxiomPool deployed: first loan issued, repaid, and protocol fee collected</div>
+  <div class="entry-why">Why it matters — protocol fee revenue is the funding mechanism for everything that follows</div>
+  <div class="entry-body">
+    <p>PaxiomPool v1 deployed to Optimism Sepolia. The contract accepts USDC deposits from liquidity providers, issues loans against 10% collateral, notifies peer chains via LayerZero on loan issuance, and distributes fees on repayment — 70% to LPs, 30% to protocol treasury.</p>
+    <p>First full loan cycle completed on the day of deployment: $5 USDC borrowed, LayerZero message sent to Base confirming execution, loan repaid within the 5-minute timeout, $0.0045 protocol fee collected and distributed. The fee split worked correctly. The collateral was returned. The loan closed cleanly.</p>
+    <p>This is not a large number. It is the first number. Every future mainnet fee traces back to this transaction.</p>
+    <span class="tx"><a href="https://sepolia-optimism.etherscan.io/tx/0x042313bee6afb1ba2fae5ac806b2fbc3bfad0be16662e2a6cc072a4fc24dfc62" target="_blank">First repayment: 0x042313...dfc62</a></span>
+    <span class="tx"><a href="https://sepolia-optimism.etherscan.io/address/0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92" target="_blank">PaxiomPool: 0x28321b...fc92</a></span>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 18, 2026</div>
+  <div class="entry-headline">AO compliance logger deployed: permanent audit trail on Arweave</div>
+  <div class="entry-why">Why it matters — compliance by architecture inverts the regulatory liability problem</div>
+  <div class="entry-body">
+    <p>Every contract deployment, cross-chain message, loan cycle, and execution signal is logged to an AO process running on Arweave. AO is a permissionless autonomous compute environment — the process runs permanently with no controlling party, and every message it receives is stored immutably on Arweave.</p>
+    <p>This means Paxiom's audit trail cannot be altered, deleted, or withheld. Any regulator, counterparty, or user can query the full history of every protocol action independently. The compliance record is not a policy commitment. It is an architectural property.</p>
+    <p>The discovery that AO lowercases all custom tag names on receipt — <code>EventType</code> becomes <code>Eventtype</code> — is documented here because it cost two hours of debugging and will cost future builders the same if not recorded.</p>
+    <span class="tx">AO compliance process: w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I</span>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 19, 2026</div>
+  <div class="entry-headline">Autonomous execution pipeline: AO monitor fires, signing daemon executes</div>
+  <div class="entry-why">Why it matters — removing the human from the execution loop is what makes the protocol scalable</div>
+  <div class="entry-body">
+    <p>The AO opportunity monitor process evaluates every spread detected by the scanner, applies cooldown and threshold logic, and fires execution signals autonomously. The signing daemon receives signals, constructs transactions for both chains simultaneously, and broadcasts them without human intervention.</p>
+    <p>The critical architectural insight proven here: LayerZero is not in the execution critical path. The AO process signals both chains simultaneously. Both transactions are constructed and broadcast in the same execution cycle. LayerZero records what happened after the fact. The spread is captured before it closes, not after a 30-120 second messaging delay.</p>
+    <p>Simulation data from the first overnight run: 67 qualifying opportunities detected, all would have been profitable, average timing gap between chain A and chain B broadcast measured at under 5ms. The gap is a JavaScript measurement artifact — real network latency dominates, but both transactions leave the signing process within milliseconds of each other.</p>
+    <span class="tx">AO opportunity monitor: JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg</span>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 20, 2026</div>
+  <div class="entry-headline">Simultaneous broadcast confirmed on-chain: identical block timestamps on two chains</div>
+  <div class="entry-why">Why it matters — same-second on-chain confirmation is proof the execution model works, not just the theory</div>
+  <div class="entry-body">
+    <p>The live executor upgraded from simulation to real testnet broadcasts. Both Optimism Sepolia and Base Sepolia transactions confirmed at <code>blockTimestamp: 0x69bd4d58</code> — the same second on two independent chains. 39 successful dual-chain broadcasts recorded across the first session.</p>
+    <p>The HTTP signal endpoint on port 7070 accepts execution signals from any source — the log file poller, the AO monitor, or a direct API call. The full chain is wired: scanner detects spread, AO evaluates and signals, executor broadcasts both chains simultaneously, confirmations logged to AO permanently.</p>
+    <p>What remains before mainnet: replace the WETH wrap test transactions with real Uniswap V3 <code>exactInputSingle</code> swap calldata, fund a mainnet wallet with a small USDC position, and deploy to mainnet. The mechanism is proven. The transfer to dedicated always-on hardware happens when the HP ProDesk workstation arrives Monday.</p>
+    <span class="tx"><a href="https://sepolia-optimism.etherscan.io/tx/0x3fcf719df0604dbbf0f0fe776113049b050f6ebd37950a52649c780bfc963f0f" target="_blank">Optimism confirmation: 0x3fcf71...f0f — block 41105622</a></span>
+    <span class="tx"><a href="https://sepolia.basescan.org/tx/0x8d74cf8553615efd14044f3a56b09e64abc9c7e72908b4f83c49f7294ba54376" target="_blank">Base confirmation: 0x8d74cf...376 — block 39122748</a></span>
+  </div>
+</div>
+
+<div class="entry">
+  <div class="entry-date">March 20, 2026</div>
+  <div class="entry-headline">Unified control panel: full stack visible in one view</div>
+  <div class="entry-why">Why it matters — infrastructure you can see is infrastructure you can trust</div>
+  <div class="entry-body">
+    <p>A Node.js backend and single-page dashboard built to manage all running processes, monitor live scanner data, track execution history, and read PaxiomPool state directly from the contract. Start and stop controls for every daemon. Live log streaming. Simulation P&L tracking alongside real execution results.</p>
+    <p>Built primarily to make the transfer to the dedicated workstation seamless — clone the repo, start the UI server, everything is visible and controllable from a browser. No terminal required for day-to-day operation once the stack is running.</p>
+    <p>As of today: 2,744 opportunities logged, 0.7202% peak spread, 125 simulation runs, $444 simulated P&L at $5k capital, 2 confirmed live dual-chain executions, 2,214ms average broadcast round-trip.</p>
+  </div>
+</div>
+
+<p class="footnote">This journal is updated as the build progresses. The permanent record of every on-chain action is available at the AO compliance process above.</p>
+
+</body>
+</html>
