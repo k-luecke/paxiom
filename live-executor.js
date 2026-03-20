@@ -89,6 +89,7 @@ async function executeLive(opp, source = 'POLL') {
       buyChain: opp.buyChain, sellChain: opp.sellChain,
       chainATxHash: `ERROR: ${e.message.slice(0, 80)}`,
       chainBTxHash: 'not reached', timingGapMs: 0, status: 'error', estimatedProfit: 0 });
+    lastExecTime = Date.now();
     return false;
   } finally {
     isExecuting = false;
@@ -127,6 +128,10 @@ async function poll() {
     const content = readFileSync(LOG_FILE, 'utf8');
     const lines   = content.trim().split('\n').filter(l => l.trim());
     const recent  = lines.slice(-3).map(l => JSON.parse(l));
+    // Skip entire poll cycle if cooldown active
+    const now = Date.now();
+    if (lastExecTime > 0 && now - lastExecTime < COOLDOWN_MS) return;
+
     for (const opp of recent) {
       if (opp.timestamp === lastSignalId) continue;
       if (parseFloat(opp.spreadPct) < MIN_SPREAD) continue;

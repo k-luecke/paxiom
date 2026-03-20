@@ -1,195 +1,193 @@
-import { readFileSync, appendFileSync } from 'fs';
-import { createPublicClient, http, parseAbi } from 'viem';
-import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
+import { readFileSync, appendFileSync, statSync } from 'fs';
+import { createWalletClient, createPublicClient, http, parseEther, encodeFunctionData } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { optimismSepolia, baseSepolia } from 'viem/chains';
 
 // ─── config ──────────────────────────────────────────────────
-const SIMULATE = true; // flip to false for real broadcasts
-const LOG_FILE = '/home/mk19/paxiom/simulation.log';
-const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
+const SIMULATE = true;
+const LOG_FILE      = '/home/mk19/paxiom/opportunities.log';
+const SIM_LOG       = '/home/mk19/paxiom/simulation.log';
+const EXEC_LOG      = '/home/mk19/paxiom/execution.log';
+const MIN_SPREAD    = 0.02;
+const CHECK_INTERVAL = 10000;
 
-// RPC endpoints
-const RPCS = {
-  optimism:  'https://mainnet.optimism.io',
-  arbitrum:  'https://arb1.arbitrum.io/rpc',
-  base:      'https://mainnet.base.org',
-};
+// WETH address — same on both OP chains
+const WETH = '0x4200000000000000000000000000000000000006';
 
-// Token addresses (mainnet for price simulation)
-const TOKENS = {
-  wstETH: {
-    optimism: '0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb',
-    arbitrum: '0x5979D7b546E38E414F7E9822514be443A4800529',
-  },
-  ETH: {
-    optimism: '0x4200000000000000000000000000000000000006',
-    arbitrum: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
-    base:     '0x4200000000000000000000000000000000000006',
-  },
-  USDC: {
-    optimism: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-    arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    base:     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  }
-};
+// Wrap amount — tiny, just proving the mechanism
+const WRAP_AMOUNT = parseEther('0.0001'); // $0.20 worth
 
-// Uniswap V3 routers
-const ROUTERS = {
-  optimism: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
-  arbitrum: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
-  base:     '0x2626664c2603336E57B271c5C0b26F421741e481',
-};
+// WETH deposit ABI
+const WETH_ABI = [{
+  name: 'deposit',
+  type: 'function',
+  stateMutability: 'payable',
+  inputs: [],
+  outputs: []
+}];
 
-// Capital per side
-const CAPITAL_USDC = {
-  wstETH: 5000,
-  ETH:    5000,
-};
+// ─── clients ─────────────────────────────────────────────────
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+if (!PRIVATE_KEY) {
+  console.error('ERROR: PRIVATE_KEY not set');
+  process.exit(1);
+}
 
-// ─── simulation logger ────────────────────────────────────────
-function logSimulation(entry) {
-  const line = JSON.stringify({
-    ...entry,
-    timestamp: new Date().toISOString(),
-    mode: 'SIMULATE'
-  });
-  appendFileSync(LOG_FILE, line + '\n');
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`[SIMULATE] ${entry.action}`);
-  console.log(`Asset:      ${entry.asset}`);
+const account = privateKeyToAccount(`0x${PRIVATE_KEY.replace('0x','')}`);
+
+const walletOp = createWalletClient({
+  account,
+  chain: optimismSepolia,
+  transport: http('https://sepolia.optimism.io')
+});
+
+const walletBase = createWalletClient({
+  account,
+  chain: baseSepolia,
+  transport: http('https://sepolia.base.org')
+});
+
+const publicOp = createPublicClient({
+  chain: optimismSepolia,
+  transport: http('https://sepolia.optimism.io')
+});
+
+const publicBase = createPublicClient({
+  chain: baseSepolia,
+  transport: http('https://sepolia.base.org')
+});
+
+console.log(`Wallet: ${account.address}`);
+
+// ─── dedup ───────────────────────────────────────────────────
+let lastSignalId = '';
+try {
+  const _lines = readFileSync(LOG_FILE, 'utf8').trim().split('\n');
+  lastSignalId = JSON.parse(_lines[_lines.length - 1]).timestamp;
+  console.log(`Resuming from: ${lastSignalId}`);
+} catch(e) {}
+
+// ─── execution logger ─────────────────────────────────────────
+function logExecution(entry) {
+  const line = JSON.stringify({ ...entry, timestamp: new Date().toISOString() });
+  appendFileSync(EXEC_LOG, line + '\n');
+
+  const profit = entry.estimatedProfit?.toFixed(4) ?? 'N/A';
+  const gap    = entry.timingGapMs ?? 'N/A';
+
+  console.log(`\n${'═'.repeat(62)}`);
+  console.log(`[${entry.mode}] ${entry.asset} ${entry.spreadPct}%`);
   console.log(`Route:      ${entry.buyChain} → ${entry.sellChain}`);
-  console.log(`Spread:     ${entry.spreadBps / 100}%`);
-  console.log(`Capital:    $${entry.capitalUsdc} per side`);
-  console.log(`Est profit: $${entry.estimatedProfit.toFixed(4)}`);
-  console.log(`ChainA tx:  ${entry.chainATx}`);
-  console.log(`ChainB tx:  ${entry.chainBTx}`);
-  console.log(`Timing gap: ${entry.timingGapMs}ms`);
+  console.log(`Chain A tx: ${entry.chainATxHash ?? entry.chainATx}`);
+  console.log(`Chain B tx: ${entry.chainBTxHash ?? entry.chainBTx}`);
+  console.log(`Timing gap: ${gap}ms`);
+  console.log(`Est profit: $${profit}`);
   console.log(`Time:       ${new Date().toISOString()}`);
-  console.log('═'.repeat(60));
+  console.log('═'.repeat(62));
 }
 
-// ─── transaction builder ─────────────────────────────────────
-function buildSwapTx(chain, tokenIn, tokenOut, amountIn, direction) {
-  const router = ROUTERS[chain];
-  const fee = 500; // 0.05% pool fee
+// ─── simultaneous broadcast ───────────────────────────────────
+async function executeLive(opp) {
+  const spreadPct = parseFloat(opp.spreadPct);
+  const estimatedProfit = 5000 * (spreadPct / 100) - 0.50;
 
-  // ExactInputSingle params
-  return {
-    to: router,
-    chain,
-    direction,
-    tokenIn,
-    tokenOut,
-    amountIn,
-    fee,
-    data: `exactInputSingle((${tokenIn},${tokenOut},${fee},recipient,${amountIn},0,0))`
-  };
-}
+  console.log(`\n[LIVE] Signal: ${opp.asset} ${opp.spreadPct}% ${opp.buyChain} → ${opp.sellChain}`);
+  console.log(`Broadcasting both chains simultaneously...`);
 
-// ─── execution simulator ──────────────────────────────────────
-async function simulateExecution(signal) {
-  const {
-    asset, spreadBps, buyChain, sellChain,
-    buyPrice, sellPrice
-  } = signal;
-
-  const capital = CAPITAL_USDC[asset] || 5000;
-  const spreadPct = spreadBps / 10000;
-  const grossProfit = capital * spreadPct;
-  const gasCost = 0.50;
-  const netProfit = grossProfit - gasCost;
-
-  // Build both transactions
-  const chainAStart = Date.now();
-
-  const chainATx = buildSwapTx(
-    buyChain,
-    TOKENS.USDC[buyChain],
-    TOKENS[asset]?.[buyChain] || TOKENS.ETH[buyChain],
-    capital * 1e6,
-    'BUY'
-  );
-
-  const chainBTx = buildSwapTx(
-    sellChain,
-    TOKENS[asset]?.[sellChain] || TOKENS.ETH[sellChain],
-    TOKENS.USDC[sellChain],
-    capital * 1e6,
-    'SELL'
-  );
-
-  const chainBStart = Date.now();
-  const timingGapMs = chainBStart - chainAStart;
-
-  // In simulate mode — log what would happen
-  logSimulation({
-    action:          'SIMULTANEOUS_EXECUTION',
-    asset,
-    spreadBps,
-    buyChain,
-    sellChain,
-    buyPrice,
-    sellPrice,
-    capitalUsdc:     capital,
-    grossProfit:     grossProfit,
-    estimatedProfit: netProfit,
-    chainATx:        `BUY ${asset} on ${buyChain} Uniswap — $${capital} USDC`,
-    chainBTx:        `SELL ${asset} on ${sellChain} Uniswap — estimated $${(capital * (1 + spreadPct)).toFixed(2)} USDC`,
-    timingGapMs,
-    wouldBeProfitable: netProfit > 0
+  // Build calldata for WETH deposit (wrap ETH) on both chains
+  const calldata = encodeFunctionData({
+    abi: WETH_ABI,
+    functionName: 'deposit'
   });
 
-  return { success: true, netProfit, timingGapMs };
+  // Fire both transactions at the exact same moment
+  // Promise.all ensures both are submitted before either awaits
+  const t0 = Date.now();
+
+  let chainAHash, chainBHash, chainAError, chainBError;
+
+  try {
+    [chainAHash, chainBHash] = await Promise.all([
+      walletOp.sendTransaction({
+        to: WETH,
+        value: WRAP_AMOUNT,
+        data: calldata,
+        gas: 50000n
+      }),
+      walletBase.sendTransaction({
+        to: WETH,
+        value: WRAP_AMOUNT,
+        data: calldata,
+        gas: 50000n
+      })
+    ]);
+  } catch(e) {
+    console.error(`Broadcast error: ${e.message}`);
+    chainAError = e.message;
+  }
+
+  const timingGapMs = Date.now() - t0;
+
+  logExecution({
+    mode:            'LIVE',
+    asset:           opp.asset,
+    spreadPct:       opp.spreadPct,
+    buyChain:        opp.buyChain,
+    sellChain:       opp.sellChain,
+    chainATxHash:    chainAHash ?? `ERROR: ${chainAError}`,
+    chainBTxHash:    chainBHash ?? 'not reached',
+    timingGapMs,
+    estimatedProfit,
+    wrapAmount:      '0.0001 ETH per chain'
+  });
+
+  // Wait for confirmations and report
+  if (chainAHash && chainBHash) {
+    console.log(`\nWaiting for confirmations...`);
+    try {
+      const [receiptA, receiptB] = await Promise.all([
+        publicOp.waitForTransactionReceipt({ hash: chainAHash, timeout: 30000 }),
+        publicBase.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })
+      ]);
+      console.log(`Chain A confirmed: block ${receiptA.blockNumber}`);
+      console.log(`Chain B confirmed: block ${receiptB.blockNumber}`);
+      console.log(`\nOptimism: https://sepolia-optimism.etherscan.io/tx/${chainAHash}`);
+      console.log(`Base:     https://sepolia.basescan.org/tx/${chainBHash}`);
+    } catch(e) {
+      console.log(`Confirmation timeout — txs broadcast, check explorers`);
+    }
+  }
 }
 
-// ─── AO signal listener ───────────────────────────────────────
-// Polls for new execution signals from the AO monitor
-// In production this would use aoconnect to watch the process inbox
-
-let lastSignalId = 0;
-
-async function pollForSignals() {
+// ─── poll loop ────────────────────────────────────────────────
+async function poll() {
   try {
-    // Read latest opportunities and check for new capturable ones
-    const content = readFileSync('/home/mk19/paxiom/opportunities.log', 'utf8');
+    const size = statSync(LOG_FILE).size;
+    const content = readFileSync(LOG_FILE, 'utf8');
     const lines = content.trim().split('\n').filter(l => l.trim());
-    const recent = lines.slice(-3).map(l => JSON.parse(l));
+    const recent = lines.slice(-5).map(l => JSON.parse(l));
 
     for (const opp of recent) {
-      const spread = parseFloat(opp.spreadPct);
+      if (opp.timestamp === lastSignalId) continue;
+      if (parseFloat(opp.spreadPct) < MIN_SPREAD) continue;
       if (!opp.capturable) continue;
-      if (spread < 0.02) continue;
 
-      const signalId = opp.timestamp;
-      if (signalId === lastSignalId) continue;
-      lastSignalId = signalId;
-
-      console.log(`\n[${new Date().toISOString()}] Signal received from scanner`);
-      console.log(`Asset: ${opp.asset} | Spread: ${opp.spreadPct}% | ${opp.buyChain} -> ${opp.sellChain}`);
-
-      await simulateExecution({
-        asset:      opp.asset,
-        spreadBps:  Math.round(parseFloat(opp.spreadPct) * 100),
-        buyChain:   opp.buyChain,
-        sellChain:  opp.sellChain,
-        buyPrice:   opp.buyPrice,
-        sellPrice:  opp.sellPrice,
-      });
+      lastSignalId = opp.timestamp;
+      await executeLive(opp);
     }
   } catch(e) {
-    // log file not ready yet
+    // log not ready
   }
 }
 
 // ─── main ─────────────────────────────────────────────────────
 console.log('╔════════════════════════════════════════════════════════════╗');
-console.log('║           PAXIOM SIGNING DAEMON — SIMULATE MODE           ║');
-console.log('║     No real transactions will be broadcast                ║');
+console.log('║          PAXIOM SIGNING DAEMON — LIVE TESTNET MODE        ║');
+console.log('║     Broadcasting real transactions to Sepolia              ║');
 console.log('╚════════════════════════════════════════════════════════════╝');
-console.log(`\nMonitor process: ${MONITOR_PROCESS}`);
-console.log(`Simulation log:  ${LOG_FILE}`);
-console.log(`Capital per side: $${CAPITAL_USDC.ETH} USDC`);
-console.log('\nWatching for capturable opportunities...\n');
+console.log(`\nChains:   Optimism Sepolia + Base Sepolia`);
+console.log(`Wrap:     0.0001 ETH per chain per execution`);
+console.log(`Min spread: ${MIN_SPREAD}%\n`);
 
-// Poll every 10 seconds aligned with scanner
-setInterval(pollForSignals, 10000);
-pollForSignals();
+setInterval(poll, CHECK_INTERVAL);
+poll();
