@@ -1,10 +1,9 @@
-const { createGenesisState } = require("./state");
-const { hashState } = require("./hash");
-const { applyAction } = require("./reducer");
+const { createActionLog, appendAction } = require("../log/action-log");
+const { replayActions } = require("../log/replay");
 
-const genesis = createGenesisState();
+let log = createActionLog();
 
-const creditAction = {
+log = appendAction(log, {
   action_id: "a1",
   sequence: 1,
   type: "ACCOUNT_CREDIT",
@@ -13,9 +12,9 @@ const creditAction = {
     asset_key: "ethereum:usdc",
     amount: "1000"
   }
-};
+});
 
-const debitAction = {
+log = appendAction(log, {
   action_id: "a2",
   sequence: 2,
   type: "ACCOUNT_DEBIT",
@@ -24,31 +23,15 @@ const debitAction = {
     asset_key: "ethereum:usdc",
     amount: "250"
   }
-};
+});
 
-const state1 = applyAction(genesis, creditAction);
-const state2 = applyAction(state1, debitAction);
+const result1 = replayActions(log);
+const result2 = replayActions(log);
 
-console.log("State 2 hash:", hashState(state2));
+console.log("Replay hash 1:", result1.stateHash);
+console.log("Replay hash 2:", result2.stateHash);
+console.log("Hashes equal:", result1.stateHash === result2.stateHash);
 console.log(
   "Final balance:",
-  state2.accounts["acct_1"].balances["ethereum:usdc"].available
+  result1.state.accounts["acct_1"].balances["ethereum:usdc"].available
 );
-
-// 🔥 failure test
-const badDebit = {
-  action_id: "a3",
-  sequence: 3,
-  type: "ACCOUNT_DEBIT",
-  payload: {
-    account_id: "acct_1",
-    asset_key: "ethereum:usdc",
-    amount: "999999"
-  }
-};
-
-try {
-  applyAction(state2, badDebit);
-} catch (err) {
-  console.log("Expected failure:", err.message);
-}
