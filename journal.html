@@ -256,8 +256,68 @@
     <p>As of today: 2,744 opportunities logged, 0.7202% peak spread, 125 simulation runs, $444 simulated P&L at $5k capital, 2 confirmed live dual-chain executions, 2,214ms average broadcast round-trip.</p>
   </div>
 </div>
+<div class="entry">
+  <div class="entry-date">March 24, 2026</div>
+  <div class="entry-headline"> Full security audit and mainnet hardening: every critical finding patched before first live capital deployment </div>
+  <div class="entry-why">code you trust with real money needs to be verified, not assumed</div>
+  <div class="entry-body">
+    <p>Before deploying capital on mainnet, the entire codebase was put through a systematic static
+audit. The goal was not compliance theater — it was to identify anything that could produce
+incorrect behavior with real funds on the line. Several findings were significant enough that
+they would have silently corrupted execution without any obvious failure signal.
 
-<p class="footnote">This journal is updated as the build progresses. The permanent record of every on-chain action is available at the AO compliance process above.</p>
+The most important: the AO poller was forwarding a hardcoded fabricated opportunity to the
+executor on every AO signal, regardless of what the AO process actually returned. The signal
+count was read correctly from AO, but the opportunity payload — asset, spread, chains — was
+hardcoded in the source. The system appeared to be working end to end, logs showed activity,
+but every "execution" was responding to phantom data. This is the category of bug that is
+worse than a hard failure because it erodes confidence in your own telemetry. Fixed by
+implementing a parseOpportunity() function that reads latestOpportunity from the actual AO
+response, validates required fields, deduplicates by signal ID, and rejects signals older
+than 60 seconds.
+
+The executor had two separate chain-routing bugs. The wallet client for Arbitrum buy-side
+paths was falling through to the Optimism wallet — any opportunity routed through Arbitrum
+on the buy side was silently using the wrong chain. The public client for balance checks had
+the same issue. Both fixed by replacing scattered ternary fallbacks with walletForChain() and
+publicForChain() helper functions — single source of truth, no fallback ambiguity.
+
+The sell leg was being constructed with amountIn: 0n — a placeholder comment said "will be
+actual WETH balance" but no replacement ever happened before broadcast. The sell transaction
+calldata was effectively a no-op. Fixed by using the wethOut value returned by the buy quote,
+which is already computed before execution proceeds.
+
+Quote failure was fail-open: if the real-spread quote was unavailable, execution continued
+anyway with a log message. On mainnet this means your loss-prevention check disappears
+exactly when market data is least reliable. Changed to fail closed — no quote, no execution.
+
+The UI server was bound to 0.0.0.0 with Access-Control-Allow-Origin: * and exposed process
+start/stop endpoints. Anyone who could reach the port could control the trading infrastructure.
+Bound to localhost, CORS removed, process control endpoints validated.
+
+Shell injection surfaces in ao-bridge and verify-and-submit were building shell command
+strings with interpolated field values from log files and passing them to execSync. Replaced
+with spawn() using argv arrays and stdin pipes throughout — the shell never sees the data.
+
+The ledger core got action schema validation, duplicate action_id prevention via a
+seen_action_ids map, and conservation invariants — every CREDIT must increase total supply by
+exactly the credited amount, every DEBIT must decrease it by exactly the debited amount. This
+catches any future reducer bug that creates or destroys funds.
+
+All fixes committed in a single audit patch set, pushed to main on GitHub. The commit message
+documents every change. The codebase is now in a materially different state than it was this
+morning — not because the architecture changed, but because the gap between "looks like it's
+working" and "actually working correctly" has been closed.
+
+First mainnet run follows.
+```
+</p>
+    
+  </div>
+  
+  
+  
+  <p class="footnote">This journal is updated as the build progresses. The permanent record of every on-chain action is available at the AO compliance process above.</p>
 
 </body>
 </html>
