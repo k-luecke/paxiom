@@ -366,11 +366,18 @@
 <div class="milestone">
   <div class="milestone-date">Mar 2026</div>
   <div class="milestone-text">PaxiomExecutor deployed on Optimism Sepolia — execution layer wired to PaxiomPool collateralized lending, completing the buy-side of the first cross-chain wstETH arbitrage circuit. 1,140 verified wstETH opportunities logged, structural spread confirmed at 0.04% avg, 286-second average execution window, 100% directional consistency across 74 hours of live scanner data.</div>
+
+<div class="milestone">
+  <div class="milestone-date">Mar 24, 2026</div>
+  <div class="milestone-text">Full execution-path audit completed and hardening patch set deployed. AO signal parsing corrected, chain routing fixed, quote verification set to fail closed, UI control plane restricted to localhost, and ledger invariants strengthened. System transitioned from prototype execution to correctness-verified operation.</div>
+</div>
 </div>
 </div>
 
 <h2>Roadmap</h2>
-<p>Mainnet OApp and PaxiomPool deployment on Arbitrum and Base is the immediate next milestone. The autonomous execution pipeline transitions from simulation to live testnet broadcasts, then mainnet once timing and execution are proven end to end.</p>
+<p<p>Mainnet preparation is now focused on controlled deployment with small amounts of capital. The execution pipeline has moved from simulation to validated testnet broadcasts, and recent hardening work ensures that signals, execution paths, and recorded outcomes reflect actual system behavior rather than placeholder or inferred data.</p>
+
+<p>The immediate objective is not scale, but correctness under live conditions — validating execution integrity, capital safety, and observability across Arbitrum, Optimism, and Base before increasing position size.</p>
 <p>PaxiomPool v2 adds ZK checkpoint proof verification for repayment — replacing LayerZero validator trust with mathematical proof of cross-chain execution state.</p>
 <p>The long-term trust model is a recursive zero-knowledge proof of the entire Ethereum consensus history from genesis to current head, stored permanently on Arweave. No checkpoint authority. No validator set. Mathematical verification of every Ethereum block since genesis. No cross-chain protocol has achieved this. Paxiom is architecting toward it as a concrete funded milestone.</p>
 
