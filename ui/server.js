@@ -1,10 +1,16 @@
 import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
-import { spawn, execSync } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { createPublicClient, http, formatEther } from 'viem';
 import { optimismSepolia } from 'viem/chains';
 
+// ─── FIX: bind to localhost only ─────────────────────────────
+// Do NOT expose process control or signal proxy to the network.
+// If you need external access, put an authenticated reverse proxy in front.
 const PORT = 3000;
+const BIND = '127.0.0.1';
+// ─────────────────────────────────────────────────────────────
+
 const BASE = '/home/mk19/paxiom';
 
 const POOL_ADDRESS = '0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92';
@@ -23,14 +29,19 @@ const PROCESSES = {
   aobridge:  { cmd: 'node', args: [`${BASE}/sdk/ao-bridge.js`],      log: `${BASE}/bridge.log`,     pid: null },
 };
 
+// ─── FIX: use execFileSync with argv arrays — no shell interpolation ──
 function getPids() {
   const result = {};
   for (const [name, p] of Object.entries(PROCESSES)) {
     try {
       const script = p.args[0].split('/').pop();
-      const out = execSync(`pgrep -f ${script} 2>/dev/null || true`).toString().trim();
+      // pgrep -f matches against full command line; use execFileSync to avoid shell injection
+      const out = execFileSync('pgrep', ['-f', script], { encoding: 'utf8' }).trim();
       result[name] = out ? parseInt(out.split('\n')[0]) : null;
-    } catch(e) { result[name] = null; }
+    } catch(e) {
+      // pgrep exits non-zero when no match — that is not an error
+      result[name] = null;
+    }
   }
   return result;
 }
@@ -51,10 +62,15 @@ function stopProcess(name) {
   if (!p) return { error: 'unknown process' };
   try {
     const script = p.args[0].split('/').pop();
-    execSync(`pkill -f ${script} 2>/dev/null || true`);
+    // execFileSync with argv array — no shell string interpolation
+    execFileSync('pkill', ['-f', script], { stdio: 'ignore' });
     return { stopped: name };
-  } catch(e) { return { error: e.message }; }
+  } catch(e) {
+    // pkill exits non-zero when nothing matched — treat as already stopped
+    return { stopped: name };
+  }
 }
+// ─────────────────────────────────────────────────────────────
 
 function getLogTail(logFile, lines = 50) {
   try {
@@ -153,19 +169,16 @@ async function getPoolState() {
   } catch(e) { return { error: e.message }; }
 }
 
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// ─── FIX: removed wildcard CORS ──────────────────────────────
+// No Access-Control-Allow-Origin: * — requests must come from
+// localhost or an authenticated reverse proxy.
+function setJsonHeaders(res) {
   res.setHeader('Content-Type', 'application/json');
 }
+// ─────────────────────────────────────────────────────────────
 
 const server = createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') {
-    cors(res);
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-  cors(res);
+  setJsonHeaders(res);
   const url = req.url.split('?')[0];
 
   if (url === '/api/status') {
@@ -189,6 +202,12 @@ const server = createServer(async (req, res) => {
     const parts = url.split('/');
     const action = parts[3];
     const name   = parts[4];
+    // Validate action and name before doing anything
+    if (!['start', 'stop'].includes(action) || !PROCESSES[name]) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'invalid action or process name' }));
+      return;
+    }
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
@@ -203,7 +222,8 @@ const server = createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const opp = JSON.parse(body);
-        const resp = await fetch('http://0.0.0.0:7070/signal', {
+        // Forward to executor on localhost — executor also binds to 127.0.0.1
+        const resp = await fetch('http://127.0.0.1:7070/signal', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(opp)
@@ -228,6 +248,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Paxiom UI backend running on http://0.0.0.0:${PORT}`);
+server.listen(PORT, BIND, () => {
+  console.log(`Paxiom UI backend running on http://${BIND}:${PORT}`);
+  console.log('NOTE: bound to localhost only — use SSH tunnel or reverse proxy for remote access');
 });

@@ -13,6 +13,9 @@ SignalCount = SignalCount or 0
 OpportunitiesEvaluated = OpportunitiesEvaluated or 0
 OpportunitiesFired = OpportunitiesFired or 0
 
+-- FIX: persist the last opportunity so GetStatus can include it
+LastOpportunity = LastOpportunity or nil
+
 -- Receive opportunity data from scanner
 Handlers.add(
   "EvaluateOpportunity",
@@ -65,20 +68,37 @@ Handlers.add(
     LastSignalTime = now
 
     local isFlashEligible = spreadBps >= MIN_SPREAD_FLASH
+    local spreadPct = string.format("%.4f", spreadBps / 100)
+    local signalId  = tostring(SignalCount)
+    local timestamp = tostring(now)
+
+    -- FIX: save opportunity to state so GetStatus can return it
+    LastOpportunity = {
+      asset      = asset,
+      spreadPct  = spreadPct,
+      spreadBps  = spreadBps,
+      buyChain   = buyChain,
+      sellChain  = sellChain,
+      buyPrice   = buyPrice,
+      sellPrice  = sellPrice,
+      capturable = true,
+      signalId   = signalId,
+      timestamp  = timestamp
+    }
 
     -- Send execution signal
     ao.send({
       Target = msg.From,
       Action = "ExecutionSignal",
-      Signalid     = tostring(SignalCount),
-      Asset        = asset,
-      Spreadbps    = tostring(spreadBps),
-      Buychain     = buyChain,
-      Sellchain    = sellChain,
-      Buyprice     = buyPrice,
-      Sellprice    = sellPrice,
+      Signalid      = signalId,
+      Asset         = asset,
+      Spreadbps     = tostring(spreadBps),
+      Buychain      = buyChain,
+      Sellchain     = sellChain,
+      Buyprice      = buyPrice,
+      Sellprice     = sellPrice,
       Flasheligible = tostring(isFlashEligible),
-      Data         = "EXECUTE: " .. asset .. " " .. spreadBps .. "bps " .. buyChain .. " -> " .. sellChain
+      Data          = "EXECUTE: " .. asset .. " " .. spreadBps .. "bps " .. buyChain .. " -> " .. sellChain
     })
 
     -- Log to compliance process
@@ -122,12 +142,14 @@ Handlers.add(
       Target = msg.From,
       Action = "StatusResult",
       Data   = require("json").encode({
-        signalCount           = SignalCount,
+        signalCount            = SignalCount,
         opportunitiesEvaluated = OpportunitiesEvaluated,
-        opportunitiesFired    = OpportunitiesFired,
-        minSpreadBps          = MIN_SPREAD_BPS,
-        cooldownMs            = COOLDOWN_MS,
-        lastSignalTime        = LastSignalTime
+        opportunitiesFired     = OpportunitiesFired,
+        minSpreadBps           = MIN_SPREAD_BPS,
+        cooldownMs             = COOLDOWN_MS,
+        lastSignalTime         = LastSignalTime,
+        -- FIX: include latest opportunity so ao-poller can forward real data
+        latestOpportunity      = LastOpportunity
       })
     })
   end

@@ -10,6 +10,45 @@ const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
 const signer = createDataItemSigner(wallet);
 
 let lastSignalCount = 0;
+let lastSignalId    = '';
+
+// Required fields for a valid opportunity signal
+const REQUIRED_OPP_FIELDS = ['asset', 'spreadPct', 'buyChain', 'sellChain'];
+
+function parseOpportunity(data) {
+  // Expect the monitor process to embed the latest opportunity in status data.
+  // Fields: asset, spreadPct, buyChain, sellChain, capturable, signalId
+  const opp = data.latestOpportunity;
+  if (!opp || typeof opp !== 'object') {
+    console.log('[AO] No latestOpportunity in status payload — skipping');
+    return null;
+  }
+
+  // Schema validation — reject if any required field is missing
+  for (const field of REQUIRED_OPP_FIELDS) {
+    if (opp[field] === undefined || opp[field] === null) {
+      console.log(`[AO] Signal missing required field "${field}" — rejecting`);
+      return null;
+    }
+  }
+
+  // Dedup by signal id
+  const signalId = opp.signalId || opp.timestamp || '';
+  if (signalId && signalId === lastSignalId) {
+    return null; // already processed
+  }
+
+  // Reject stale signals (older than 60 seconds if timestamp present)
+  if (opp.timestamp) {
+    const age = Date.now() - new Date(opp.timestamp).getTime();
+    if (age > 60_000) {
+      console.log(`[AO] Signal is ${Math.round(age/1000)}s old — rejecting as stale`);
+      return null;
+    }
+  }
+
+  return { ...opp, _signalId: signalId };
+}
 
 async function pollAOMonitor() {
   try {
@@ -30,20 +69,21 @@ async function pollAOMonitor() {
     console.log(`[AO] New signal detected — count ${lastSignalCount} -> ${signalCount}`);
     lastSignalCount = signalCount;
 
-    // Parse the last signal from status data
-    const opp = {
-      asset:      'ETH',
-      spreadPct:  '0.08',
-      buyChain:   'optimism',
-      sellChain:  'arbitrum',
-      capturable: true
-    };
+    // Parse and validate the real opportunity from the AO payload
+    const opp = parseOpportunity(data);
+    if (!opp) return;
 
-    // Forward to executor
+    // Update dedup state
+    lastSignalId = opp._signalId;
+
+    console.log(`[AO] Forwarding opportunity: ${opp.asset} ${opp.spreadPct}% ${opp.buyChain} -> ${opp.sellChain}`);
+
+    // Forward to executor (strip internal _signalId field)
+    const { _signalId, ...oppClean } = opp;
     const resp = await fetch(EXECUTOR_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(opp)
+      body: JSON.stringify(oppClean)
     });
     const execResult = await resp.json();
     console.log(`[AO] Executor: ${execResult.status}`);
