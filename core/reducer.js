@@ -1,3 +1,5 @@
+const { runInvariants } = require("./invariants");
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -46,19 +48,23 @@ function applyAction(state, action) {
       const { account_id, asset_key, amount } = action.payload;
       const slot = getBalanceSlot(next, account_id, asset_key);
       slot.available = addStrInt(slot.available, amount);
-      return next;
+      break;
     }
 
     case "ACCOUNT_DEBIT": {
       const { account_id, asset_key, amount } = action.payload;
       const slot = getBalanceSlot(next, account_id, asset_key);
       slot.available = subStrInt(slot.available, amount);
-      return next;
+      break;
     }
 
     default:
       throw new Error(`Unsupported action type: ${action.type}`);
   }
+
+  runInvariants(state, next, action);
+
+  return next;
 }
 
 module.exports = {
