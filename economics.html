@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paxiom — Economics</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #111;
+    --subtle: #333;
+    --muted: #666;
+    --faint: #888;
+    --border: #e5e5e5;
+    --code-bg: #f6f6f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0d;
+      --text: #eaeaea;
+      --subtle: #ccc;
+      --muted: #999;
+      --faint: #666;
+      --border: #222;
+      --code-bg: #161616;
+    }
+  }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 680px;
+    margin: 72px auto;
+    padding: 0 24px;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .back {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    margin-bottom: 48px;
+  }
+  .back:hover { color: var(--text); }
+  h2 {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 48px 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  h2:first-of-type { margin-top: 0; }
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 28px 0 10px;
+  }
+  p {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--subtle);
+    margin-bottom: 14px;
+  }
+  .component {
+    margin-bottom: 20px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .component-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .component-desc {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); }
+  .stat-value { color: var(--text); font-weight: 500; text-align: right; }
+  .footnote {
+    margin-top: 48px;
+    font-size: 13px;
+    color: var(--faint);
+  }
+</style>
+</head>
+<body>
+
+<a class="back" href="index.html">← Paxiom</a>
+
+<h2>Economics</h2>
+<p>Paxiom is designed to capture value at multiple layers of cross-chain activity. The immediate revenue source is direct execution, but the larger business model is built around participating in the transaction path itself: where liquidity moves, where coordination is required, and where verification becomes valuable.</p>
+<p>This matters because the long-term opportunity is not limited to beating every market participant on speed. It is to operate where cross-chain activity depends on reliable execution, capital coordination, and settlement truth.</p>
+
+<h2>How value is captured</h2>
+
+<div class="component">
+  <div class="component-title">1. Direct arbitrage</div>
+  <p class="component-desc">Paxiom monitors pricing differences for the same asset across networks and executes when spreads are real, large enough, and capturable. This is the current revenue layer: identifying an inefficiency, coordinating both sides of the trade, and capturing the spread.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">2. Liquidity and fee participation</div>
+  <p class="component-desc">Cross-chain trading activity generates fees wherever liquidity is used. As Paxiom develops its own pool and execution paths, the protocol can participate in fee generation tied to the movement of capital, not only the outcome of individual trades. This creates a model that scales with volume as well as execution quality.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">3. Execution and coordination infrastructure</div>
+  <p class="component-desc">The highest-leverage layer is coordination itself. Cross-chain systems break down when execution is sequential, unverifiable, or dependent on trusted intermediaries. Paxiom is being built to sit around the trade as infrastructure: coordinating actions between networks with deterministic logic, permanent logging, and eventual zero-knowledge settlement proofs.</p>
+</div>
+
+<h2>Why this model matters</h2>
+<p>Most trading systems compete directly on speed, routing, and inventory. That is a real business, but it is also the most crowded layer. Paxiom is designed to move one level higher: from competing only inside trades to participating in the structure that those trades rely on.</p>
+<p>That means value can be captured in more than one way. A profitable spread is one layer. Fee participation is another. Over time, the coordination and verification layer becomes the durable part of the business because it benefits from activity regardless of which specific actor is fastest on a given trade.</p>
+
+<h2>Current state and direction</h2>
+
+<h3>Current state</h3>
+<p>Today, Paxiom's economics are centered on direct execution: scanner-detected opportunities, coordinated broadcasts, and early pool infrastructure that can support fee generation and future lending behavior.</p>
+
+<h3>Direction</h3>
+<p>The direction is toward a broader cross-chain financial primitive: a system that captures value through execution, liquidity, and verification together. In that model, revenue becomes less dependent on winning every individual spread and more dependent on owning useful infrastructure in the path of cross-chain capital.</p>
+
+<h2>Corporate outlook</h2>
+<div class="component">
+  <div class="component-title">Near term</div>
+  <p class="component-desc">Controlled small-capital deployment, execution correctness under live conditions, and continued hardening of capital safety, routing, and observability.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">Medium term</div>
+  <p class="component-desc">Expansion of PaxiomPool, stronger coordination between chains, and a larger share of revenue coming from fee-bearing infrastructure rather than only direct spread capture.</p>
+</div>
+
+<div class="component">
+  <div class="component-title">Long term</div>
+  <p class="component-desc">A cross-chain clearing and verification layer where settlement assumptions are reduced from trust in intermediaries to mathematical proof, enabling institutional-grade usage across fragmented blockchain markets.</p>
+</div>
+
+<h2>Economic summary</h2>
+<div class="component">
+  <div class="stat-row">
+    <span class="stat-label">Revenue layer today</span>
+    <span class="stat-value">Direct arbitrage execution</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Revenue layer developing</span>
+    <span class="stat-value">Liquidity and protocol fees</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Highest-leverage end state</span>
+    <span class="stat-value">Execution and verification infrastructure</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">Core thesis</span>
+    <span class="stat-value">Capture value where cross-chain capital flows</span>
+  </div>
+</div>
+
+<p class="footnote">Paxiom is not designed to compete with every participant in the market. It is designed to operate where those participants interact.</p>
+
+</body>
+</html>
