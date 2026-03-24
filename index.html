@@ -71,6 +71,16 @@
     color: var(--subtle);
     margin-bottom: 16px;
   }
+  .status {
+    margin: 28px 0 8px;
+    padding: 14px 16px;
+    border: 1px solid rgba(127,127,127,0.2);
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--subtle);
+    background: rgba(127,127,127,0.04);
+  }
   .tags {
     margin-top: 32px;
   }
@@ -93,6 +103,7 @@
   .github {
     display: inline-block;
     margin-top: 40px;
+    margin-right: 18px;
     font-size: 14px;
     color: var(--subtle);
     text-decoration: none;
@@ -122,41 +133,52 @@
   <polygon class="triangle" points="256,240 210,310 302,310" stroke="var(--stroke)" stroke-width="16" fill="none"/>
   <circle class="triangle dot" cx="256" cy="275" r="10" fill="var(--stroke)"/>
 </svg>
+
 <p class="eyebrow">A verification primitive for cross-chain systems</p>
-<p class="eyebrow">Paxiom = a verifiable cross-chain clearing and liquidity layer with deterministic execution and eventual zk settlement proofs</p>
-  
+<p class="eyebrow">Verifiable cross-chain clearing, liquidity, and execution infrastructure with deterministic state transitions and eventual zk settlement proofs</p>
+
 <h1>PAXIOM</h1>
 <div class="tagline">Proof Over Trust</div>
 <p class="anchor">Mathematical verification of cross-chain state.</p>
+
 <p>
-Trustless cross-chain execution and verification infrastructure built on zero-knowledge proofs,
-permanent autonomous compute, and cross-chain messaging.
+Paxiom is cross-chain execution and verification infrastructure built on deterministic ledger logic,
+permanent autonomous compute, and cross-chain messaging — with zero-knowledge settlement as the end state.
 </p>
+
 <p>
-No relayers. No validators. No trusted intermediaries.
+The goal is not just to make cross-chain systems work. It is to make them verifiable, auditable,
+and trustworthy under real conditions.
 </p>
+
+<p>
+No relayers. No validator committees. No trusted intermediary at the verification layer.
+</p>
+
+<div class="status">
+  <strong>Current status:</strong> live scanner, AO monitoring, cross-chain messaging, compliance logging,
+  and execution infrastructure are running. The latest phase focused on execution-path hardening:
+  real signal parsing, fail-closed quote verification, corrected chain routing, localhost-only control plane,
+  and stronger ledger invariants ahead of controlled small-capital deployment.
+</div>
+
 <div class="tags">
   <span class="tag">Cross-chain execution</span>
+  <span class="tag">Deterministic ledger</span>
   <span class="tag">ZK verification</span>
   <span class="tag">Autonomous compute</span>
   <span class="tag">Arbitrum</span>
   <span class="tag">Base</span>
   <span class="tag">Optimism</span>
 </div>
+
 <p class="footnote">
 No checkpoints. No consensus trust assumptions. Verifiable from genesis.
 </p>
-<a class="github" href="https://github.com/k-luecke/paxiom" target="_blank">
-  [View on GitHub] 
-</a>
-<a class="github" href="compliance.html" target="_blank">
-  [AO compliance log] 
-</a>
-<a class="github" href="about.html">
-  [Technical overview]
-</a>
-<a class="github" href="journal.html">
-  [Build journal] 
-</a>
+
+<a class="github" href="https://github.com/k-luecke/paxiom" target="_blank">[View on GitHub]</a>
+<a class="github" href="compliance.html" target="_blank">[AO compliance log]</a>
+<a class="github" href="about.html">[Technical overview]</a>
+<a class="github" href="journal.html">[Build journal]</a>
 </body>
 </html>
