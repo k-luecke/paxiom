@@ -138,6 +138,23 @@ const publicOp   = createPublicClient({ chain: opChain,            transport: ht
 const publicBase = createPublicClient({ chain: baseChain,          transport: http(RPCS.base) });
 const publicArb  = createPublicClient({ chain: arbChain,           transport: http(RPCS.arbitrum) });
 
+// ─── FIX: centralised chain-to-client helpers ────────────────
+// Single source of truth — no scattered ternary fallbacks.
+function walletForChain(chainName) {
+  if (chainName === 'optimism') return walletOp;
+  if (chainName === 'base')     return walletBase;
+  if (chainName === 'arbitrum') return walletArb;
+  throw new Error(`Unknown chain for wallet: ${chainName}`);
+}
+
+function publicForChain(chainName) {
+  if (chainName === 'optimism') return publicOp;
+  if (chainName === 'base')     return publicBase;
+  if (chainName === 'arbitrum') return publicArb;
+  throw new Error(`Unknown chain for public client: ${chainName}`);
+}
+// ─────────────────────────────────────────────────────────────
+
 let lastSignalId = '';
 let lastExecTime = 0;
 let execCount    = 0;
@@ -171,12 +188,8 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
     const sellQuoterAddr = QUOTER_ADDRESSES[sellChainName];
     if (!buyQuoterAddr || !sellQuoterAddr) return null;
 
-    const buyClient  = buyChainName  === 'optimism' ? publicOp
-                     : buyChainName  === 'base'      ? publicBase
-                     : publicArb;
-    const sellClient = sellChainName === 'arbitrum'  ? publicArb
-                     : sellChainName === 'base'       ? publicBase
-                     : publicOp;
+    const buyClient  = publicForChain(buyChainName);
+    const sellClient = publicForChain(sellChainName);
 
     const buyQuote = await buyClient.simulateContract({
       address: buyQuoterAddr, abi: QUOTER_ABI,
@@ -219,23 +232,24 @@ async function executeLive(opp, source = 'POLL') {
   execCount++;
   console.log(`\n[${source} #${execCount}] ${opp.asset} ${opp.spreadPct}% ${opp.buyChain} -> ${opp.sellChain}`);
   try {
-    // nonces fetched fresh after approve — see below
-    // Determine buy/sell chains from opportunity
     const buyChainName  = opp.buyChain  || 'optimism';
     const sellChainName = opp.sellChain || 'arbitrum';
-    const buyCfg  = CHAIN_CONFIG[buyChainName]  || CHAIN_CONFIG.optimism;
-    const sellCfg = CHAIN_CONFIG[sellChainName] || CHAIN_CONFIG.arbitrum;
+    const buyCfg  = CHAIN_CONFIG[buyChainName];
+    const sellCfg = CHAIN_CONFIG[sellChainName];
 
-    // Get wallets for correct chains
-    const buyWallet  = buyChainName === 'optimism'  ? walletOp
-                     : buyChainName === 'base'       ? walletBase
-                     : walletOp;
-    const sellWallet = sellChainName === 'arbitrum' ? walletArb
-                     : sellChainName === 'base'      ? walletBase
-                     : walletOp;
+    if (!buyCfg || !sellCfg) {
+      console.log(`[SKIP] Unknown chain in opportunity: ${buyChainName} / ${sellChainName}`);
+      isExecuting = false;
+      return false;
+    }
+
+    // ─── FIX: use helper for correct chain clients ────────────
+    const buyWallet  = walletForChain(buyChainName);
+    const sellWallet = walletForChain(sellChainName);
+    const buyPublic  = publicForChain(buyChainName);
+    // ─────────────────────────────────────────────────────────
 
     // Check USDC balance on buy side
-    const buyPublic = buyChainName === 'optimism' ? publicOp : publicBase;
     const usdcBal = await buyPublic.readContract({
       address: buyCfg.usdc, abi: ERC20_ABI,
       functionName: 'balanceOf', args: [account.address]
@@ -256,16 +270,6 @@ async function executeLive(opp, source = 'POLL') {
                sqrtPriceLimitX96: 0n }]
     });
 
-    // Build sell calldata — WETH → USDC on sell chain
-    const sellCalldata = encodeFunctionData({
-      abi: SWAP_ABI, functionName: 'exactInputSingle',
-      args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
-               fee: 500, recipient: account.address,
-               amountIn: 0n,  // will be actual WETH balance
-               amountOutMinimum: 0n,
-               sqrtPriceLimitX96: 0n }]
-    });
-
     // Approve USDC spend on buy side first
     const approveCalldata = encodeFunctionData({
       abi: ERC20_ABI, functionName: 'approve',
@@ -275,22 +279,24 @@ async function executeLive(opp, source = 'POLL') {
     console.log('[SWAP] ' + buyChainName + ' buy USDC->ETH | ' + sellChainName + ' sell ETH->USDC');
     console.log('[SWAP] Trade size: $' + (Number(TRADE_USDC) / 1e6).toFixed(2) + ' USDC');
 
-    // ─── Quoter gate — verify real spread before spending gas ────
+    // ─── FIX: quote must succeed — fail closed if unavailable ─
     console.log('[QUOTE] Checking real spread...');
     const quote = await quoteRealSpread(buyChainName, sellChainName, TRADE_USDC);
-    if (quote) {
-      console.log(`[QUOTE] in: $${quote.usdcIn.toFixed(2)} out: $${quote.usdcOut.toFixed(4)} | real spread: ${quote.realSpreadPct.toFixed(4)}% | net: $${quote.netProfit.toFixed(4)}`);
-      if (quote.netProfit <= 0) {
-        console.log(`[SKIP] Real spread negative after price impact — not profitable, skipping`);
-        lastExecTime = Date.now();
-        isExecuting = false;
-        return false;
-      }
-      console.log(`[QUOTE] Profitable — proceeding with execution`);
-    } else {
-      console.log('[QUOTE] Quote unavailable — proceeding anyway');
+    if (!quote) {
+      console.log('[SKIP] Quote unavailable — aborting execution (fail closed)');
+      lastExecTime = Date.now();
+      isExecuting = false;
+      return false;
     }
-    // ─────────────────────────────────────────────────────────────
+    console.log(`[QUOTE] in: $${quote.usdcIn.toFixed(2)} out: $${quote.usdcOut.toFixed(4)} | real spread: ${quote.realSpreadPct.toFixed(4)}% | net: $${quote.netProfit.toFixed(4)}`);
+    if (quote.netProfit <= 0) {
+      console.log(`[SKIP] Real spread negative after price impact — not profitable, skipping`);
+      lastExecTime = Date.now();
+      isExecuting = false;
+      return false;
+    }
+    console.log(`[QUOTE] Profitable — proceeding with execution`);
+    // ─────────────────────────────────────────────────────────
 
     const t0 = Date.now();
 
@@ -301,7 +307,7 @@ async function executeLive(opp, source = 'POLL') {
     });
     await buyPublic.waitForTransactionReceipt({ hash: approveHash, timeout: 30000 });
 
-    // Step 2 — fetch fresh nonces after approve then fire simultaneously
+    // Step 2 — fetch fresh nonces after approve
     const [freshNonceOp, freshNonceBase, freshNonceArb] = await Promise.all([
       publicOp.getTransactionCount({ address: account.address }),
       publicBase.getTransactionCount({ address: account.address }),
@@ -314,6 +320,19 @@ async function executeLive(opp, source = 'POLL') {
     const sellNonce = sellChainName === 'arbitrum' ? freshNonceArb
                     : sellChainName === 'base'      ? freshNonceBase
                     : freshNonceOp;
+
+    // ─── FIX: sell leg uses actual wethOut from the quote ─────
+    // We now know exactly how much WETH the buy will produce.
+    // Build sell calldata with real amountIn instead of 0n.
+    const sellCalldata = encodeFunctionData({
+      abi: SWAP_ABI, functionName: 'exactInputSingle',
+      args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
+               fee: 500, recipient: account.address,
+               amountIn: quote.wethOut,
+               amountOutMinimum: 0n,
+               sqrtPriceLimitX96: 0n }]
+    });
+    // ─────────────────────────────────────────────────────────
 
     // Fire both swaps simultaneously
     const [chainAHash, chainBHash] = await Promise.all([
@@ -334,7 +353,7 @@ async function executeLive(opp, source = 'POLL') {
       buyChain: opp.buyChain, sellChain: opp.sellChain,
       chainATxHash: chainAHash, chainBTxHash: chainBHash,
       timingGapMs, status: 'broadcast_success',
-      estimatedProfit: 5000 * (parseFloat(opp.spreadPct) / 100) - 0.50 });
+      estimatedProfit: quote.netProfit });
     Promise.all([
       publicOp.waitForTransactionReceipt({ hash: chainAHash, timeout: 30000 }),
       publicBase.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })

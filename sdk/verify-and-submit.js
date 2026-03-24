@@ -1,11 +1,11 @@
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 const PAXIOM_PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
 const BEACON_URL = 'https://lodestar-mainnet.chainsafe.io';
 const VERIFIER_BIN = '/home/mk19/paxiom/rust/bls-verify-cli/target/release/bls-verify-cli';
 const PUBKEY_CACHE = '/home/mk19/paxiom/pubkey-cache.json';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 27 hours in ms
+const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -36,7 +36,6 @@ async function fetchPubkeys(indices) {
 }
 
 async function getPubkeys(indices) {
-  // Check cache first
   if (existsSync(PUBKEY_CACHE)) {
     const cache = JSON.parse(readFileSync(PUBKEY_CACHE, 'utf-8'));
     const age = Date.now() - cache.timestamp;
@@ -46,15 +45,46 @@ async function getPubkeys(indices) {
     }
   }
 
-  // Fetch fresh and cache
   console.log('Fetching pubkeys (cache miss)...');
   const pubkeys = await fetchPubkeys(indices);
-  writeFileSync(PUBKEY_CACHE, JSON.stringify({
-    timestamp: Date.now(),
-    pubkeys
-  }));
+  writeFileSync(PUBKEY_CACHE, JSON.stringify({ timestamp: Date.now(), pubkeys }));
   console.log(`Fetched and cached ${pubkeys.length} pubkeys`);
   return pubkeys;
+}
+
+// FIX: replace execSync shell interpolation with spawn + stdin pipe.
+// The verifier JSON is written to stdin — never interpolated into a shell string.
+function runVerifier(verifierInput) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(VERIFIER_BIN, [], {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => stdout += d);
+    child.stderr.on('data', d => stderr += d);
+
+    child.on('close', code => {
+      if (code !== 0) {
+        reject(new Error(`Verifier exited ${code}: ${stderr.slice(0, 200)}`));
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch(e) {
+        reject(new Error(`Verifier output not valid JSON: ${stdout.slice(0, 200)}`));
+      }
+    });
+
+    child.on('error', err => {
+      reject(new Error(`Failed to spawn verifier: ${err.message}`));
+    });
+
+    // Send JSON payload to verifier via stdin
+    child.stdin.write(verifierInput);
+    child.stdin.end();
+  });
 }
 
 async function main() {
@@ -86,11 +116,7 @@ async function main() {
   console.log('Running BLS verification...');
   let verifyResult;
   try {
-    const output = execSync(
-      `echo '${verifierInput}' | ${VERIFIER_BIN}`,
-      { timeout: 30000 }
-    ).toString();
-    verifyResult = JSON.parse(output);
+    verifyResult = await runVerifier(verifierInput);
   } catch(e) {
     console.log('Verifier error:', e.message);
     return;
@@ -101,7 +127,8 @@ async function main() {
   if (verifyResult.verified) {
     console.log(`\nSlot ${slot} VERIFIED - submitting to Paxiom...`);
 
-    const child = spawn('bash', ['/home/mk19/paxiom/sdk/submit-to-ao.sh', slot, stateRoot], {
+    // submit-to-ao.sh receives slot and stateRoot as argv — no shell interpolation
+    const child = spawn('bash', ['/home/mk19/paxiom/sdk/submit-to-ao.sh', String(slot), stateRoot], {
       detached: true,
       stdio: 'ignore'
     });
@@ -109,7 +136,6 @@ async function main() {
 
     console.log(`Slot ${slot} submitted to Paxiom (background)`);
     console.log('Signing root:', verifyResult.signing_root);
-
   } else {
     console.log('Verification failed:', verifyResult.error);
   }

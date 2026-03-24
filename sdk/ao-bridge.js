@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from 'fs';
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 
 const LOG_FILE = '/home/mk19/paxiom/opportunities.log';
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
@@ -8,15 +8,15 @@ const CHECK_INTERVAL = 10000;
 
 // Gateway list — mix of locations and providers for resilience
 const GATEWAYS = [
-  'https://arweave.net',               // primary — Seattle, Amazon
-  'https://arweave.developerdao.com',  // Developer DAO — Portland, Amazon
-  'https://ar.anyone.tech',            // ANyONe — Nuremberg, Hetzner
-  'https://ariospeedwagon.com',        // Ario Speedwagon — Falkenstein, Hetzner
-  'https://sulapan.com',               // CodeBlockLabs — Burlington
-  'https://frostor.xyz',               // IDeployedTooSoon — Helsinki, Hetzner
-  'https://arweave.fllstck.dev',       // Fllstck — Oberasbach
-  'https://ar-node.megastake.org',     // Megastake — Nuremberg, Hetzner
-  'https://g8way.io',                  // fallback
+  'https://arweave.net',
+  'https://arweave.developerdao.com',
+  'https://ar.anyone.tech',
+  'https://ariospeedwagon.com',
+  'https://sulapan.com',
+  'https://frostor.xyz',
+  'https://arweave.fllstck.dev',
+  'https://ar-node.megastake.org',
+  'https://g8way.io',
 ];
 
 let lastSize = 0;
@@ -30,11 +30,13 @@ function getCurrentGateway() {
 
 function markGatewayFailed(gateway) {
   gatewayFailCounts[gateway] = (gatewayFailCounts[gateway] || 0) + 1;
-  // Rotate to next gateway
   currentGatewayIndex = (currentGatewayIndex + 1) % GATEWAYS.length;
   console.log(`[${new Date().toISOString()}] Switched to: ${getCurrentGateway()}`);
 }
 
+// FIX: replace execSync shell interpolation with spawn + stdin pipe.
+// Field values from the log file are passed through argv and stdin,
+// never interpolated into a shell string.
 function sendToAO(opportunity, attemptIndex = 0) {
   if (attemptIndex >= GATEWAYS.length) {
     console.log(`[${new Date().toISOString()}] All gateways failed — skipping`);
@@ -45,6 +47,7 @@ function sendToAO(opportunity, attemptIndex = 0) {
   const gateway = GATEWAYS[gatewayIndex];
   const spreadBps = Math.round(parseFloat(opportunity.spreadPct) * 100);
 
+  // Build the Lua send expression as a plain string — no shell involvement
   const luaCmd = [
     'Send({',
     `  Target = "${MONITOR_PROCESS}",`,
@@ -60,18 +63,47 @@ function sendToAO(opportunity, attemptIndex = 0) {
     '})',
   ].join('\n');
 
-  try {
-    execSync(
-      `echo '${luaCmd}' | aos ${MONITOR_PROCESS} --gateway ${gateway}`,
-      { timeout: 8000, stdio: 'pipe' }
-    );
-    console.log(`[${new Date().toISOString()}] Sent via ${gateway}: ${opportunity.asset} ${opportunity.spreadPct}% ${opportunity.buyChain} -> ${opportunity.sellChain}`);
-    currentGatewayIndex = gatewayIndex; // stick with working gateway
-  } catch(e) {
-    console.log(`[${new Date().toISOString()}] ${gateway} failed — trying next`);
+  // spawn with argv array — shell never sees the Lua string
+  const child = spawn('aos', [MONITOR_PROCESS, '--gateway', gateway], {
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', d => stdout += d);
+  child.stderr.on('data', d => stderr += d);
+
+  child.on('close', code => {
+    if (code === 0) {
+      console.log(`[${new Date().toISOString()}] Sent via ${gateway}: ${opportunity.asset} ${opportunity.spreadPct}% ${opportunity.buyChain} -> ${opportunity.sellChain}`);
+      currentGatewayIndex = gatewayIndex; // stick with working gateway
+    } else {
+      console.log(`[${new Date().toISOString()}] ${gateway} failed (exit ${code}) — trying next`);
+      if (stderr) console.log(`[AO-BRIDGE] stderr: ${stderr.slice(0, 120)}`);
+      markGatewayFailed(gateway);
+      sendToAO(opportunity, attemptIndex + 1);
+    }
+  });
+
+  child.on('error', err => {
+    console.log(`[${new Date().toISOString()}] spawn error on ${gateway}: ${err.message}`);
     markGatewayFailed(gateway);
     sendToAO(opportunity, attemptIndex + 1);
-  }
+  });
+
+  // Write the Lua command to stdin and close it
+  child.stdin.write(luaCmd + '\n');
+  child.stdin.end();
+
+  // Hard timeout — kill if aos hangs
+  setTimeout(() => {
+    if (!child.killed) {
+      child.kill();
+      console.log(`[${new Date().toISOString()}] Timeout — killed aos on ${gateway}`);
+      markGatewayFailed(gateway);
+      sendToAO(opportunity, attemptIndex + 1);
+    }
+  }, 10000);
 }
 
 function checkLog() {
@@ -93,11 +125,15 @@ function checkLog() {
         lastProcessed = opp.timestamp;
         console.log(`[${new Date().toISOString()}] Capturable: ${opp.asset} ${opp.spreadPct}% ${opp.buyChain} -> ${opp.sellChain}`);
         sendToAO(opp);
-      } catch(e) {}
+      } catch(e) {
+        console.log(`[AO-BRIDGE] Malformed log line: ${e.message}`);
+      }
     }
 
     lastSize = size;
-  } catch(e) {}
+  } catch(e) {
+    console.log(`[AO-BRIDGE] checkLog error: ${e.message}`);
+  }
 }
 
 console.log('PaxiomAOBridge running');

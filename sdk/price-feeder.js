@@ -22,8 +22,7 @@ const POOLS = [
 const spreadHistory = {};
 const velocityHistory = {};
 
-// ─── Quoter config ────────────────────────────────────────────
-const TRADE_SIZE_USDC = 10_000000n; // $10 USDC quote size
+const TRADE_SIZE_USDC = 10_000000n;
 
 const QUOTER_ADDRESSES = {
   optimism: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
@@ -68,7 +67,6 @@ const QUOTER_ABI = [{
   ]
 }];
 
-// RPC clients for quoting
 const RPC_URLS = {
   optimism: 'https://mainnet.optimism.io',
   arbitrum: 'https://arb1.arbitrum.io/rpc',
@@ -103,24 +101,21 @@ async function quoteRealSpread(asset, buyChain, sellChain, spreadPct) {
       getQuoteClient(sellChain)
     ]);
 
-    // Quote buy side: USDC → WETH on cheap chain
-    // Quote sell side: WETH → USDC on expensive chain
-    const [buyQuote, sellQuote] = await Promise.all([
-      buyClient.simulateContract({
-        address: QUOTER_ADDRESSES[buyChain],
-        abi: QUOTER_ABI,
-        functionName: 'quoteExactInputSingle',
-        args: [{ tokenIn: buyCfg.USDC, tokenOut: tokenOut,
-                 amountIn: TRADE_SIZE_USDC, fee: 500, sqrtPriceLimitX96: 0n }]
-      }),
-      sellClient.simulateContract({
-        address: QUOTER_ADDRESSES[sellChain],
-        abi: QUOTER_ABI,
-        functionName: 'quoteExactInputSingle',
-        args: [{ tokenIn: tokenIn, tokenOut: sellCfg.USDC,
-                 amountIn: buyQuote.result[0], fee: 500, sqrtPriceLimitX96: 0n }]
-      })
-    ]);
+    const buyQuote = await buyClient.simulateContract({
+      address: QUOTER_ADDRESSES[buyChain],
+      abi: QUOTER_ABI,
+      functionName: 'quoteExactInputSingle',
+      args: [{ tokenIn: buyCfg.USDC, tokenOut: tokenOut,
+               amountIn: TRADE_SIZE_USDC, fee: 500, sqrtPriceLimitX96: 0n }]
+    });
+
+    const sellQuote = await sellClient.simulateContract({
+      address: QUOTER_ADDRESSES[sellChain],
+      abi: QUOTER_ABI,
+      functionName: 'quoteExactInputSingle',
+      args: [{ tokenIn: tokenIn, tokenOut: sellCfg.USDC,
+               amountIn: buyQuote.result[0], fee: 500, sqrtPriceLimitX96: 0n }]
+    });
 
     const usdcIn  = Number(TRADE_SIZE_USDC) / 1e6;
     const usdcOut = Number(sellQuote.result[0]) / 1e6;
@@ -134,10 +129,12 @@ async function quoteRealSpread(asset, buyChain, sellChain, spreadPct) {
       quoteFailed: false
     };
   } catch(e) {
-    // If quote fails fall back to theoretical spread
+    // FIX: log quote failures explicitly rather than silently falling back
+    console.log(`[QUOTE] Failed for ${asset} ${buyChain}->${sellChain}: ${e.message.slice(0, 80)}`);
     return { realSpreadPct: spreadPct, quoteFailed: true, error: e.message.slice(0, 60) };
   }
 }
+
 const FLASH_FEE = 0.0005;
 const GAS_COST = 50;
 const LOAN_SIZES = [1000000, 5000000, 10000000];
@@ -161,7 +158,6 @@ function getSettings(asset) {
   return SETTINGS[asset] || SETTINGS.default;
 }
 
-// State file for dedup — persists across restarts
 const STATE_FILE = '/home/mk19/paxiom/sdk/dedup-state.json';
 let dedupState = {};
 try {
@@ -189,7 +185,9 @@ function updateDedupState(asset, spreadPct, buyChain, sellChain) {
   dedupState[key] = { spread: spreadPct, timestamp: Date.now() };
   try {
     writeFileSync(STATE_FILE, JSON.stringify(dedupState));
-  } catch(e) {}
+  } catch(e) {
+    console.log(`[PRICE-FEEDER] Failed to write dedup state: ${e.message}`);
+  }
 }
 
 async function fetchPoolPrice(entry) {
@@ -209,7 +207,10 @@ async function fetchPoolPrice(entry) {
     const price = Number(sqrtPriceX96 * sqrtPriceX96 * BigInt(10 ** entry.decimals)) / Number(Q96 * Q96);
     if (price < 0.0001 || price > 10000000) return null;
     return price;
-  } catch(e) { return null; }
+  } catch(e) {
+    console.log(`[PRICE-FEEDER] Pool fetch failed ${entry.chain}/${entry.asset}: ${e.message.slice(0, 60)}`);
+    return null;
+  }
 }
 
 function calcProfit(spreadPct, loanSize) {
@@ -235,9 +236,6 @@ function analyzeVelocity(asset, spreadPct, buyChain, sellChain) {
   const opening = delta > 0;
   const settings = getSettings(asset);
 
-  // Simultaneous execution via AO fires both chains at the same moment
-  // Direction consistency (sameDir) is the only meaningful filter
-  // Opening/closing velocity no longer disqualifies — spread exists NOW
   const capturable = sameDir && spreadPct > settings.capturableThreshold;
 
   return {
@@ -306,7 +304,6 @@ async function main() {
     if (shouldLog(asset, spreadPct, minEntry.chain, maxEntry.chain)) {
       updateDedupState(asset, spreadPct, minEntry.chain, maxEntry.chain);
 
-      // Get real quoted spread for this trade size
       const quote = await quoteRealSpread(asset, minEntry.chain, maxEntry.chain, spreadPct);
       const realCapturable = !quote.quoteFailed && quote.realSpreadPct > 0.01;
 
@@ -314,25 +311,30 @@ async function main() {
         console.log(`  Quote: $${quote.usdcIn?.toFixed(2)} → $${quote.usdcOut?.toFixed(4)} | real spread: ${quote.realSpreadPct?.toFixed(4)}% | net: $${quote.netProfit?.toFixed(4)}`);
       }
 
-      appendFileSync(LOG_FILE,
-        JSON.stringify({
-          timestamp: new Date().toISOString(),
-          asset,
-          spreadPct: spreadPct.toFixed(4),
-          realSpreadPct: quote.realSpreadPct?.toFixed(4) ?? spreadPct.toFixed(4),
-          realNetProfit: quote.netProfit?.toFixed(4) ?? '0',
-          quoteFailed: quote.quoteFailed,
-          buyChain: minEntry.chain,
-          buyDex: minEntry.dex,
-          sellChain: maxEntry.chain,
-          sellDex: maxEntry.dex,
-          buyPrice: min.toFixed(4),
-          sellPrice: max.toFixed(4),
-          persistent: persistenceFlag.length > 0,
-          velocity: velocity ? velocity.trend : 'unknown',
-          capturable: realCapturable
-        }) + '\n'
-      );
+      // FIX: only log if JSON serialisation succeeds — don't silently swallow write errors
+      try {
+        appendFileSync(LOG_FILE,
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            asset,
+            spreadPct: spreadPct.toFixed(4),
+            realSpreadPct: quote.realSpreadPct?.toFixed(4) ?? spreadPct.toFixed(4),
+            realNetProfit: quote.netProfit?.toFixed(4) ?? '0',
+            quoteFailed: quote.quoteFailed,
+            buyChain: minEntry.chain,
+            buyDex: minEntry.dex,
+            sellChain: maxEntry.chain,
+            sellDex: maxEntry.dex,
+            buyPrice: min.toFixed(4),
+            sellPrice: max.toFixed(4),
+            persistent: persistenceFlag.length > 0,
+            velocity: velocity ? velocity.trend : 'unknown',
+            capturable: realCapturable
+          }) + '\n'
+        );
+      } catch(e) {
+        console.log(`[PRICE-FEEDER] Log write failed: ${e.message}`);
+      }
     }
   }
 
@@ -353,7 +355,11 @@ async function main() {
 
 async function loop() {
   while(true) {
-    await main();
+    try {
+      await main();
+    } catch(e) {
+      console.log(`[PRICE-FEEDER] Scan error: ${e.message}`);
+    }
     console.log('\nNext scan in 10 seconds...');
     await new Promise(r => setTimeout(r, 10000));
   }
