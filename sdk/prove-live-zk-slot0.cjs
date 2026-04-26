@@ -1,7 +1,5 @@
-const { appendFeedItem, createFeedItem } = require("../feed/store");
 const { normalizeHex } = require("../core/eth-proof");
-const { proveUniswapV3Slot0 } = require("./prove-uniswap-v3-slot0.cjs");
-const { proveSlot0Zk } = require("./prove-zk-slot0.cjs");
+const { runSlot0Pipeline } = require("./zk-slot0-stages.cjs");
 
 function arg(name, fallback = null) {
   const prefix = `--${name}=`;
@@ -22,55 +20,23 @@ async function proveLiveZkSlot0(options = {}) {
     throw new Error("Usage: npm run zk:live:slot0 -- --pool=0x... [--block=finalized]");
   }
 
-  const mpt = await proveUniswapV3Slot0({
+  const result = await runSlot0Pipeline({
     pool,
     blockTag,
     token0Decimals,
     token1Decimals,
-    corpusCommitment: options.corpusCommitment || "local-live-zk"
-  });
-
-  const zk = await proveSlot0Zk({
-    slot0: mpt.storageFact.value,
-    subject: mpt.fact.subject,
-    block_number: mpt.fact.slot,
-    state_root: mpt.fact.state_root,
-    mpt_proof_hash: mpt.storageFact.proof_hash || mpt.verified.proofHash,
+    corpusCommitment: options.corpusCommitment || "local-live-zk",
+    writeFeed,
     out
   });
 
-  const feedItem = createFeedItem({
-    feed_id: "ethereum.uniswap_v3_slot0.zk",
-    chain: "ethereum",
-    predicate: "uniswap_v3_slot0",
-    subject: mpt.fact.subject,
-    value: {
-      raw: mpt.storageFact.value,
-      decoded: mpt.slot0,
-      token1PerToken0: mpt.token1PerToken0
-    },
-    block_number: mpt.fact.slot,
-    block_hash: mpt.verified.blockHash || null,
-    state_root: mpt.fact.state_root,
-    proof_system: "eip1186-mpt+groth16-bn128-uniswap-v3-slot0-dev",
-    proof_hash: zk.proof_hash,
-    proof_receipt: zk.receipt,
-    witness_commitment: zk.job.witness_commitment,
-    mpt_proof_hash: mpt.storageFact.proof_hash || mpt.verified.proofHash,
-    paxiom_commitment: zk.receipt.commitment,
-    corpus_commitment: mpt.fact.corpus_commitment,
-    verification_level: "zk_verified",
-    source: "paxiom-live-zk-slot0"
-  });
-
-  if (writeFeed) appendFeedItem(feedItem);
-
   return {
     pool: normalizeHex(pool),
-    mpt,
-    zk,
-    feedItem,
-    wroteFeed: writeFeed
+    mpt: result.witness.mpt,
+    zk: result.zk,
+    feedItem: result.feedItem,
+    wroteFeed: writeFeed,
+    stages: result.stages
   };
 }
 

@@ -5,8 +5,10 @@ ADMIN = ADMIN or Owner
 State = State or {
   version = 1,
   jobs = {},
+  attempts = {},
   receipts = {},
   job_count = 0,
+  attempt_count = 0,
   receipt_count = 0,
   rejected_count = 0
 }
@@ -73,6 +75,7 @@ Handlers.add(
       job = data,
       submitted_by = msg.From,
       status = existing and existing.status or "pending",
+      attempts = existing and existing.attempts or 0,
       timestamp = os.time()
     }
 
@@ -80,6 +83,52 @@ Handlers.add(
       job_id = data.job_id,
       status = State.jobs[data.job_id].status,
       job_count = State.job_count
+    })
+  end
+)
+
+Handlers.add(
+  "assign-zk-job",
+  function(msg)
+    return msg.Action == "AssignZkPredicateJob"
+  end,
+  function(msg)
+    local jobId = msg["Job-Id"] or msg.JobId
+    local worker = msg["Worker-Id"] or msg.WorkerId or msg.From
+    local timeoutSeconds = tonumber(msg["Timeout-Seconds"] or msg.TimeoutSeconds or "300")
+    if jobId == nil or jobId == "" then
+      reject(msg, "ZkJobAssignRejected", "Job-Id is required")
+      return
+    end
+    local record = State.jobs[jobId]
+    if record == nil then
+      reject(msg, "ZkJobAssignRejected", "Unknown job_id")
+      return
+    end
+    if record.status == "proved" then
+      reject(msg, "ZkJobAssignRejected", "Job already proved")
+      return
+    end
+
+    record.attempts = (record.attempts or 0) + 1
+    local attemptId = jobId .. ":" .. tostring(record.attempts)
+    State.attempt_count = State.attempt_count + 1
+    State.attempts[attemptId] = {
+      job_id = jobId,
+      attempt = record.attempts,
+      worker_id = worker,
+      status = "assigned",
+      assigned_at = os.time(),
+      deadline_at = os.time() + timeoutSeconds
+    }
+    record.status = "assigned"
+    record.active_attempt_id = attemptId
+
+    reply(msg.From, "ZkJobAssigned", {
+      job_id = jobId,
+      attempt_id = attemptId,
+      worker_id = worker,
+      deadline_at = State.attempts[attemptId].deadline_at
     })
   end
 )
@@ -126,6 +175,10 @@ Handlers.add(
       timestamp = os.time()
     }
     State.jobs[data.job_id].status = "proved"
+    local active = State.jobs[data.job_id].active_attempt_id
+    if active and State.attempts[active] then
+      State.attempts[active].status = "proved"
+    end
 
     reply(msg.From, "ZkProofAccepted", {
       key = key,
@@ -145,8 +198,34 @@ Handlers.add(
     reply(msg.From, "ZkState", {
       version = State.version,
       job_count = State.job_count,
+      attempt_count = State.attempt_count,
       receipt_count = State.receipt_count,
       rejected_count = State.rejected_count
+    })
+  end
+)
+
+Handlers.add(
+  "mark-stale-zk-jobs",
+  function(msg)
+    return msg.Action == "MarkStaleZkJobs"
+  end,
+  function(msg)
+    local now = os.time()
+    local stale = {}
+    for attemptId, attempt in pairs(State.attempts) do
+      if attempt.status == "assigned" and attempt.deadline_at ~= nil and attempt.deadline_at <= now then
+        attempt.status = "stale"
+        table.insert(stale, attemptId)
+        local record = State.jobs[attempt.job_id]
+        if record and record.status ~= "proved" then
+          record.status = "pending"
+        end
+      end
+    end
+    reply(msg.From, "ZkStaleJobsMarked", {
+      stale_attempts = stale,
+      count = #stale
     })
   end
 )

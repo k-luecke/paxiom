@@ -30,11 +30,44 @@ const { getPredicate, listPredicates } = require('../feed/predicates');
 const {
   assignJobToWorker,
   createAoDispatch,
+  createJobAttempt,
   createRecursiveAggregationPlan,
   createZkPredicateJob,
   createZkProofReceipt,
+  dedupeJobs,
+  isJobAttemptStale,
+  nextJobAttempt,
   receiptKey
 } = require('../core/zk-pipeline');
+const {
+  cacheKey,
+  getOrPutWitnessCacheEntry,
+  protocolMetadataCacheInput,
+  readWitnessCache
+} = require('../core/witness-cache');
+const {
+  GOLDILOCKS_PRIME,
+  keccakF1600CostModel,
+  validateEthereumKeccakVectors
+} = require('../core/goldilocks-keccak');
+const {
+  decodeCompactPath,
+  stableWitnessPayload,
+  summarizeProofNode
+} = require('../core/eip1186-witness');
+const { createExpanderKeccakBatch } = require('../core/expander-keccak-batch');
+const { assertKeccakDigest, traceKeccak256 } = require('../core/keccak-trace');
+const {
+  compareKeccakBackends,
+  estimateKeccacheckBatch,
+  estimateExpanderBatch,
+  keccakPermutationsForBytes,
+  planKeccacheckForInclusionWitness
+} = require('../core/keccacheck-model');
+const {
+  assertUsableWitness,
+  proveEthereumInclusion
+} = require('../sdk/ethereum-inclusion-backend.cjs');
 const { backendFromEnv } = require('../sdk/prover-backend.cjs');
 const { mkdtempSync, rmSync } = require('fs');
 const { join } = require('path');
@@ -369,6 +402,199 @@ async function testProverBackendSelection() {
   );
 }
 
+async function testGoldilocksKeccakExperimentPrimitives() {
+  assert.strictEqual(GOLDILOCKS_PRIME.toString(), '18446744069414584321');
+
+  const vectors = validateEthereumKeccakVectors();
+  assert.ok(vectors.every(vector => vector.ok));
+  assert.strictEqual(vectors[1].selector, '0xa9059cbb');
+  assert.strictEqual(vectors[2].selector, '0x70a08231');
+
+  const cost = keccakF1600CostModel();
+  assert.strictEqual(cost.rounds, 24);
+  assert.strictEqual(cost.bitsPerLane, 64);
+  assert.ok(cost.bitAnds > 0);
+  assert.ok(cost.bitXors > cost.bitAnds);
+}
+
+async function testZkJobAttemptsAndDedupe() {
+  const job = createZkPredicateJob({
+    predicate: 'uniswap_v3_slot0',
+    subject: 'ethereum:pool:slot0',
+    block_number: 1,
+    state_root: root(1)
+  });
+  const duplicate = createZkPredicateJob({
+    predicate: 'uniswap_v3_slot0',
+    subject: 'ethereum:pool:slot0',
+    block_number: 1,
+    state_root: root(1)
+  });
+
+  assert.strictEqual(dedupeJobs([job, duplicate]).length, 1);
+
+  const attempt = createJobAttempt(job, {
+    worker_id: 'ao-zk-worker-0',
+    deadline_at: '2020-01-01T00:00:00.000Z'
+  });
+  assert.strictEqual(isJobAttemptStale(attempt, new Date('2020-01-01T00:00:01.000Z')), true);
+  const retry = nextJobAttempt(attempt, { max_attempts: 3 });
+  assert.strictEqual(retry.attempt, 2);
+}
+
+async function testWitnessCache() {
+  const dir = mkdtempSync(join(tmpdir(), 'paxiom-cache-'));
+  try {
+    const file = join(dir, 'cache.json');
+    const input = protocolMetadataCacheInput({
+      protocol: 'uniswap_v3_slot0',
+      subject: 'Ethereum:Pool'
+    });
+    const key = cacheKey('protocol_metadata', input);
+    const first = getOrPutWitnessCacheEntry({
+      kind: 'protocol_metadata',
+      input,
+      file,
+      produce: () => ({ slot: '0x0' })
+    });
+    const second = getOrPutWitnessCacheEntry({
+      kind: 'protocol_metadata',
+      input,
+      file,
+      produce: () => ({ slot: '0x1' })
+    });
+    assert.strictEqual(first.hit, false);
+    assert.strictEqual(second.hit, true);
+    assert.strictEqual(first.entry.key, key);
+    assert.strictEqual(readWitnessCache(file).entries[key].value.slot, '0x0');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function testEthereumInclusionWitnessPrimitives() {
+  const branch = summarizeProofNode('0xd18080808080808080808080808080808080', 0);
+  assert.strictEqual(branch.node_type, 'branch');
+  assert.strictEqual(branch.item_count, 17);
+  assert.strictEqual(branch.byte_length, 18);
+  assert.strictEqual(branch.child_refs.length, 16);
+
+  const leafPath = decodeCompactPath(Uint8Array.from([0x20, 0xab, 0xcd]));
+  assert.strictEqual(leafPath.kind, 'leaf');
+  assert.strictEqual(leafPath.is_odd, false);
+  assert.deepStrictEqual(leafPath.nibbles, [10, 11, 12, 13]);
+
+  const extensionPath = decodeCompactPath(Uint8Array.from([0x11, 0x23]));
+  assert.strictEqual(extensionPath.kind, 'extension');
+  assert.strictEqual(extensionPath.is_odd, true);
+  assert.deepStrictEqual(extensionPath.nibbles, [1, 2, 3]);
+}
+
+async function testEthereumInclusionBackendScaffold() {
+  const witness = {
+    schema: 'paxiom.ethereum_inclusion_witness.v1',
+    generated_at: '2026-04-26T00:00:00.000Z',
+    verified_offchain: true,
+    root_checks: {
+      account_root_matches_state_root: true,
+      storage_root_matches_account_storage_hash: true
+    },
+    public_inputs: {
+      state_root: root(1),
+      address_hash: root(2),
+      storage_root: root(3),
+      storage_key_hash: root(4),
+      storage_value: '0x01'
+    }
+  };
+
+  assert.doesNotThrow(() => assertUsableWitness(witness));
+  assert.deepStrictEqual(Object.keys(stableWitnessPayload(witness)).includes('generated_at'), false);
+
+  const proof = proveEthereumInclusion(witness, { backend: 'mock-normalized' });
+  assert.strictEqual(proof.kind, 'ETHEREUM_INCLUSION_BACKEND_PROOF');
+  assert.strictEqual(proof.proves_in_circuit, false);
+  assert.ok(proof.next_backend_targets.some(target => target.backend === 'goldilocks-stark'));
+  assert.throws(() => proveEthereumInclusion(witness, { backend: 'circom-keccak-mpt' }), /not wired yet/);
+}
+
+async function testKeccacheckBatchModel() {
+  assert.strictEqual(keccakPermutationsForBytes(0), 1);
+  assert.strictEqual(keccakPermutationsForBytes(135), 1);
+  assert.strictEqual(keccakPermutationsForBytes(136), 2);
+  assert.strictEqual(keccakPermutationsForBytes(532), 4);
+
+  const batch = estimateKeccacheckBatch(17);
+  assert.strictEqual(batch.padded_instances, 32);
+  assert.strictEqual(batch.num_variables, 11);
+  assert.strictEqual(batch.estimated_constraints, 960572);
+
+  const expander = estimateExpanderBatch(4500);
+  assert.strictEqual(expander.estimated_proving_seconds, 1);
+  assert.strictEqual(expander.estimated_peak_memory_mb, 72000);
+  assert.ok(compareKeccakBackends(64).expander_speedup_vs_keccacheck_estimate > 1);
+
+  const witness = {
+    schema: 'paxiom.ethereum_inclusion_witness.v1',
+    commitment: 'witness:1',
+    target: { block_number: '1' },
+    account_proof_nodes: [
+      { index: 0, byte_length: 532, keccak: root(1) },
+      { index: 1, byte_length: 20, keccak: root(2) }
+    ],
+    storage_proof_nodes: [
+      { index: 0, byte_length: 136, keccak: root(3) }
+    ]
+  };
+  const plan = planKeccacheckForInclusionWitness(witness, { maxBatchSize: 1024 });
+  assert.strictEqual(plan.total_keccak_permutations, 9);
+  assert.strictEqual(plan.batches[0].padded_instances, 16);
+  assert.strictEqual(plan.backend_comparisons.length, 1);
+  assert.ok(plan.commitment);
+}
+
+async function testKeccakTraceVectors() {
+  assert.strictEqual(
+    assertKeccakDigest('', '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'),
+    '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+  );
+  assert.strictEqual(
+    traceKeccak256('transfer(address,uint256)').digest,
+    '0xa9059cbb2ab09eb219583f4a59a5d0623ade346d962bcd4e46b11da047c9049b'
+  );
+  assert.strictEqual(traceKeccak256(new Uint8Array(136)).permutations.length, 2);
+}
+
+async function testExpanderKeccakBatchFromWitness() {
+  const witness = {
+    schema: 'paxiom.ethereum_inclusion_witness.v1',
+    commitment: 'witness:test',
+    target: {
+      address: '0x0000000000000000000000000000000000000000',
+      storage_slot: '0x0',
+      block_number: '1'
+    },
+    account_proof_nodes: [
+      {
+        index: 0,
+        rlp: '0xd18080808080808080808080808080808080',
+        keccak: traceKeccak256('0xd18080808080808080808080808080808080').digest,
+        node_type: 'branch',
+        byte_length: 18
+      }
+    ],
+    storage_proof_nodes: []
+  };
+  const batch = createExpanderKeccakBatch(witness, {
+    generatedAt: '2026-04-26T00:00:00.000Z'
+  });
+  assert.strictEqual(batch.schema, 'paxiom.expander_keccak_batch.v1');
+  assert.strictEqual(batch.tasks.length, 3);
+  assert.strictEqual(batch.permutation_count, 3);
+  assert.strictEqual(batch.tasks[0].expected_digest, traceKeccak256('0x0000000000000000000000000000000000000000').digest);
+  assert.ok(batch.commitment);
+}
+
 (async () => {
   await testCoreReplay();
   await testReducerRejectsReplay();
@@ -383,6 +609,14 @@ async function testProverBackendSelection() {
   await testPredicateCatalog();
   await testZkPipelinePlansParallelJobs();
   await testProverBackendSelection();
+  await testGoldilocksKeccakExperimentPrimitives();
+  await testZkJobAttemptsAndDedupe();
+  await testWitnessCache();
+  await testEthereumInclusionWitnessPrimitives();
+  await testEthereumInclusionBackendScaffold();
+  await testKeccacheckBatchModel();
+  await testKeccakTraceVectors();
+  await testExpanderKeccakBatchFromWitness();
   console.log('All tests passed');
 })().catch(err => {
   console.error(err);

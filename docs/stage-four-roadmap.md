@@ -30,6 +30,9 @@ Start with `uniswap_v3_slot0` for selected high-volume pools.
 - AO submission command: `npm run zk:ao:slot0 -- --process <ao-process> --pool <pool>`
 - Prover backend selector: `PAXIOM_ZK_PROVER_BACKEND=snarkjs|rapidsnark|external`
 - In-circuit MPT plan: `zk/circuits/ethereum_storage_inclusion.md`
+- Goldilocks backend scan: `docs/goldilocks-backend-scan.md`
+- Production readiness tracker: `docs/zk-production-readiness.md`
+- Benchmark command: `npm run zk:bench:slot0 -- --pool <pool> --block finalized`
 
 - Build the circuit/prover for storage inclusion plus slot0 decoding.
 - Generate witnesses from finalized Ethereum blocks.

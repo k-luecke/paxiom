@@ -140,7 +140,12 @@ async function verifyEip1186Proof({ block, proof }) {
 
 module.exports = {
   accountTrieKey,
+  bytesToQuantity,
+  decodeAccount,
+  hexToBytesStrict,
+  leftPad32,
   normalizeHex,
+  proofNodes,
   quantityToBigInt,
   storageTrieKey,
   verifyAccountProof,

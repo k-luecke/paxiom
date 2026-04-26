@@ -17,6 +17,13 @@
     "zk:prove:slot0": "node sdk/prove-zk-slot0.cjs",
     "zk:live:slot0": "node sdk/prove-live-zk-slot0.cjs",
     "zk:ao:slot0": "node sdk/submit-zk-slot0-to-ao.mjs",
+    "zk:witness:inclusion": "node sdk/build-ethereum-inclusion-witness.cjs",
+    "zk:prove:inclusion": "node sdk/ethereum-inclusion-backend.cjs",
+    "zk:plan:keccacheck": "node sdk/plan-keccacheck-batch.cjs",
+    "zk:batch:expander-keccak": "node sdk/build-expander-keccak-batch.cjs",
+    "zk:check:expander": "node sdk/check-expander-runtime.cjs",
+    "zk:goldilocks:keccak": "node sdk/goldilocks-keccak-experiment.cjs",
+    "zk:bench:slot0": "node sdk/benchmark-zk-slot0.cjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],

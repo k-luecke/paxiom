@@ -64,6 +64,59 @@ function createAoDispatch(job, workerCount = 1) {
   };
 }
 
+function createJobAttempt(job, options = {}) {
+  assert(job && job.kind === "ZK_PREDICATE_JOB", "Invalid ZK predicate job");
+  const attempt = {
+    kind: "ZK_JOB_ATTEMPT",
+    version: 1,
+    job_id: job.job_id,
+    attempt: options.attempt || 1,
+    status: options.status || "pending",
+    worker_id: options.worker_id || null,
+    assigned_at: options.assigned_at || new Date().toISOString(),
+    deadline_at: options.deadline_at || null,
+    last_error: options.last_error || null
+  };
+
+  return {
+    ...attempt,
+    attempt_id: hashCommitment("ZK_JOB_ATTEMPT", attempt)
+  };
+}
+
+function isJobAttemptStale(attempt, now = new Date()) {
+  assert(attempt && attempt.kind === "ZK_JOB_ATTEMPT", "Invalid ZK job attempt");
+  if (!attempt.deadline_at) return false;
+  return new Date(attempt.deadline_at).getTime() <= now.getTime();
+}
+
+function nextJobAttempt(previous, options = {}) {
+  assert(previous && previous.kind === "ZK_JOB_ATTEMPT", "Invalid ZK job attempt");
+  const maxAttempts = options.max_attempts || 3;
+  assert(previous.attempt < maxAttempts, "maximum attempts exceeded");
+  return createJobAttempt(
+    { kind: "ZK_PREDICATE_JOB", job_id: previous.job_id },
+    {
+      attempt: previous.attempt + 1,
+      status: "pending",
+      worker_id: options.worker_id || null,
+      assigned_at: options.assigned_at || new Date().toISOString(),
+      deadline_at: options.deadline_at || null,
+      last_error: previous.last_error || null
+    }
+  );
+}
+
+function dedupeJobs(jobs) {
+  assert(Array.isArray(jobs), "jobs must be an array");
+  const byId = new Map();
+  for (const job of jobs) {
+    assert(job && job.kind === "ZK_PREDICATE_JOB", "Invalid ZK predicate job");
+    if (!byId.has(job.job_id)) byId.set(job.job_id, job);
+  }
+  return Array.from(byId.values());
+}
+
 function createZkProofReceipt(input) {
   assert(input && typeof input === "object", "ZK proof receipt input must be an object");
   assert(input.job && input.job.kind === "ZK_PREDICATE_JOB", "job is required");
@@ -124,8 +177,12 @@ function receiptKey(receipt) {
 module.exports = {
   assignJobToWorker,
   createAoDispatch,
+  createJobAttempt,
   createRecursiveAggregationPlan,
   createZkPredicateJob,
   createZkProofReceipt,
+  dedupeJobs,
+  isJobAttemptStale,
+  nextJobAttempt,
   receiptKey
 };
