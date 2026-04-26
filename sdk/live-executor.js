@@ -5,6 +5,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
 import {
   EXECUTION_ENABLED,
+  REQUIRE_GENESIS_PROOF,
+  requireGenesisProof,
   normalizeOpportunity,
   requireExecutionEnabled,
   requireSignalAuth
@@ -231,6 +233,7 @@ async function executeLive(opp, source = 'POLL') {
   try {
     requireExecutionEnabled();
     opp = normalizeOpportunity(opp);
+    requireGenesisProof(opp);
   } catch(e) {
     console.log(`[SKIP] ${e.message}`);
     return false;
@@ -483,6 +486,7 @@ console.log('Paxiom Live Executor — Testnet Broadcast');
 console.log(`Wallet: ${account.address}`);
 console.log(`Min spread: ${MIN_SPREAD}%  Cooldown: ${COOLDOWN_MS/1000}s  Port: ${HTTP_PORT}\n`);
 console.log(`Execution enabled: ${EXECUTION_ENABLED ? 'yes' : 'no'}\n`);
+console.log(`Require genesis proof: ${REQUIRE_GENESIS_PROOF ? 'yes' : 'no'}\n`);
 
 setInterval(poll, CHECK_INTERVAL);
 poll();

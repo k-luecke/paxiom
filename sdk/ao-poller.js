@@ -2,15 +2,19 @@ import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { readFileSync } from 'fs';
 
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
+const PROOF_PROCESS   = process.env.PAXIOM_PROOF_PROCESS || MONITOR_PROCESS;
 const EXECUTOR_URL    = 'http://127.0.0.1:7070/signal';
 const POLL_INTERVAL   = 8000;
 const AR_WALLET       = process.env.AR_WALLET || '/home/mk19/.aos.json';
+const SIGNAL_TOKEN    = process.env.PAXIOM_SIGNAL_TOKEN || '';
+const REQUIRE_GENESIS = process.env.PAXIOM_REQUIRE_GENESIS_PROOF !== 'false';
 
 const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
 const signer = createDataItemSigner(wallet);
 
 let lastSignalCount = 0;
 let lastSignalId    = '';
+let lastProofState  = null;
 
 // Required fields for a valid opportunity signal
 const REQUIRED_OPP_FIELDS = ['asset', 'spreadPct', 'buyChain', 'sellChain'];
@@ -50,6 +54,23 @@ function parseOpportunity(data) {
   return { ...opp, _signalId: signalId };
 }
 
+async function getProofState() {
+  const msgId = await message({
+    process: PROOF_PROCESS,
+    tags: [{ name: 'Action', value: 'GetState' }],
+    signer
+  });
+
+  const res = await result({ process: PROOF_PROCESS, message: msgId });
+  if (!res.Messages?.length) {
+    throw new Error('No proof state response');
+  }
+
+  const data = JSON.parse(res.Messages[res.Messages.length - 1].Data || '{}');
+  lastProofState = data;
+  return data;
+}
+
 async function pollAOMonitor() {
   try {
     const msgId = await message({
@@ -73,6 +94,14 @@ async function pollAOMonitor() {
     const opp = parseOpportunity(data);
     if (!opp) return;
 
+    if (REQUIRE_GENESIS) {
+      const proofState = await getProofState();
+      if (proofState.genesis_proven !== true) {
+        console.log('[AO] Genesis proof incomplete — not forwarding execution signal');
+        return;
+      }
+    }
+
     // Update dedup state
     lastSignalId = opp._signalId;
 
@@ -80,9 +109,21 @@ async function pollAOMonitor() {
 
     // Forward to executor (strip internal _signalId field)
     const { _signalId, ...oppClean } = opp;
+    if (lastProofState) {
+      oppClean.genesisProof = {
+        genesis_proven: lastProofState.genesis_proven,
+        genesis_slot: lastProofState.genesis_slot,
+        genesis_state_root: lastProofState.genesis_state_root,
+        latest_proven_slot: lastProofState.latest_proven_slot,
+        latest_proven_state_root: lastProofState.latest_proven_state_root
+      };
+    }
     const resp = await fetch(EXECUTOR_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-paxiom-signal-token': SIGNAL_TOKEN
+      },
       body: JSON.stringify(oppClean)
     });
     const execResult = await resp.json();
@@ -95,8 +136,11 @@ async function pollAOMonitor() {
 
 console.log('PaxiomAOPoller running');
 console.log(`Monitor: ${MONITOR_PROCESS}`);
+console.log(`Proof: ${PROOF_PROCESS}`);
 console.log(`Executor: ${EXECUTOR_URL}`);
 console.log(`Wallet: ${AR_WALLET}\n`);
+console.log(`Require genesis proof: ${REQUIRE_GENESIS ? 'yes' : 'no'}`);
+console.log(`Signal token configured: ${SIGNAL_TOKEN ? 'yes' : 'no'}\n`);
 
 setInterval(pollAOMonitor, POLL_INTERVAL);
 pollAOMonitor();

@@ -5,6 +5,7 @@ const MAX_SPREAD_PCT = 25;
 
 export const EXECUTION_ENABLED = process.env.PAXIOM_EXECUTION_ENABLED === 'true';
 export const SIGNAL_TOKEN = process.env.PAXIOM_SIGNAL_TOKEN || '';
+export const REQUIRE_GENESIS_PROOF = process.env.PAXIOM_REQUIRE_GENESIS_PROOF !== 'false';
 
 export function requireExecutionEnabled() {
   if (!EXECUTION_ENABLED) {
@@ -18,6 +19,17 @@ export function requireSignalAuth(req) {
   }
   if (req.headers['x-paxiom-signal-token'] !== SIGNAL_TOKEN) {
     throw new Error('Invalid signal token');
+  }
+}
+
+export function requireGenesisProof(opp) {
+  if (!REQUIRE_GENESIS_PROOF) return;
+  const proof = opp?.genesisProof;
+  if (!proof || proof.genesis_proven !== true) {
+    throw new Error('Genesis proof incomplete');
+  }
+  if (!proof.genesis_state_root || Number(proof.genesis_slot || 0) <= 0) {
+    throw new Error('Genesis proof missing slot or state root');
   }
 }
 

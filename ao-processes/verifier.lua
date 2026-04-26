@@ -17,7 +17,10 @@ local function isTrustedVerifier(msg)
 end
 
 -- Paxiom verified state
-State = {
+State = State or {
+  genesis_proven = false,
+  genesis_slot = 0,
+  genesis_state_root = "",
   latest_proven_slot = 0,
   latest_proven_state_root = "",
   proven_count = 0,
@@ -42,7 +45,24 @@ Handlers.add(
       return
     end
 
-    local header = json.decode(msg.Data)
+    local ok, header = pcall(json.decode, msg.Data or "{}")
+    if not ok or type(header) ~= "table" then
+      ao.send({
+        Target = msg.From,
+        Action = "HeaderRejected",
+        Data = json.encode({ error = "Invalid header JSON" })
+      })
+      return
+    end
+
+    if header.slot == nil or header.state_root == nil or tostring(header.state_root) == "" then
+      ao.send({
+        Target = msg.From,
+        Action = "HeaderRejected",
+        Data = json.encode({ error = "Header requires slot and state_root" })
+      })
+      return
+    end
 
     State.pending_count = State.pending_count + 1
     State.headers[tostring(header.slot)] = {
@@ -80,7 +100,16 @@ Handlers.add(
       return
     end
 
-    local data = json.decode(msg.Data)
+    local ok, data = pcall(json.decode, msg.Data or "{}")
+    if not ok or type(data) ~= "table" then
+      ao.send({
+        Target = msg.From,
+        Action = "VerifyResult",
+        Data = json.encode({ verified = false, error = "Invalid verification JSON" })
+      })
+      return
+    end
+
     local slot_key = tostring(data.slot)
 
     if not State.headers[slot_key] then
@@ -114,6 +143,12 @@ Handlers.add(
       State.latest_proven_state_root = State.headers[slot_key].state_root
       State.proven_count = State.proven_count + 1
       State.pending_count = State.pending_count - 1
+
+      if not State.genesis_proven then
+        State.genesis_proven = true
+        State.genesis_slot = data.slot
+        State.genesis_state_root = State.headers[slot_key].state_root
+      end
     else
       State.headers[slot_key].status = "rejected"
       State.rejected_count = State.rejected_count + 1
@@ -126,7 +161,10 @@ Handlers.add(
       Data = json.encode({
         slot = data.slot,
         verified = data.verified,
-        state_root = State.headers[slot_key].state_root
+        state_root = State.headers[slot_key].state_root,
+        genesis_proven = State.genesis_proven,
+        genesis_slot = State.genesis_slot,
+        genesis_state_root = State.genesis_state_root
       })
     })
   end
@@ -178,6 +216,10 @@ Handlers.add(
       Data = json.encode({
         latest_proven_slot = State.latest_proven_slot,
         latest_proven_state_root = State.latest_proven_state_root,
+        genesis_proven = State.genesis_proven,
+        genesis_slot = State.genesis_slot,
+        genesis_state_root = State.genesis_state_root,
+        protocol_phase = State.genesis_proven and "GENESIS_PROVEN" or "GENESIS_PENDING",
         proven_count = State.proven_count,
         pending_count = State.pending_count,
         rejected_count = State.rejected_count

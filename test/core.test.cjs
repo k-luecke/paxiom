@@ -66,6 +66,16 @@ async function testExecutionPolicy() {
     capturable: true
   }), /stale/);
 
+  assert.throws(() => policy.requireGenesisProof(valid), /Genesis proof incomplete/);
+  assert.doesNotThrow(() => policy.requireGenesisProof({
+    ...valid,
+    genesisProof: {
+      genesis_proven: true,
+      genesis_slot: 1,
+      genesis_state_root: '0xabc'
+    }
+  }));
+
   assert.throws(() => policy.requireExecutionEnabled(), /Execution disabled/);
 }
 
