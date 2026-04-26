@@ -1,0 +1,12 @@
+[
+  {
+    "id": "pilot-uniswap-slot0",
+    "status": "active",
+    "token_hash": "replace-with-sha256-token-hash",
+    "scopes": [
+      "predicate:uniswap_v3_slot0",
+      "feed:ethereum.uniswap_v3_slot0",
+      "subject:ethereum:0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640:slot0"
+    ]
+  }
+]

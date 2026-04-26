@@ -1,0 +1,18 @@
+[Unit]
+Description=Paxiom live Ethereum proof feed writer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/paxiom
+EnvironmentFile=/etc/paxiom/live-prover.env
+ExecStart=/usr/bin/npm run proof:live
+Restart=always
+RestartSec=5
+User=paxiom
+Group=paxiom
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

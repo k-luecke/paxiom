@@ -1,0 +1,18 @@
+[Unit]
+Description=Paxiom subscriber feed API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/paxiom
+EnvironmentFile=/etc/paxiom/feed-api.env
+ExecStart=/usr/bin/npm run feed:server
+Restart=always
+RestartSec=5
+User=paxiom
+Group=paxiom
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
