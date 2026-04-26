@@ -6,6 +6,8 @@
   "scripts": {
     "feed:server": "node feed/server.mjs",
     "feed:hash-token": "node sdk/hash-feed-token.cjs",
+    "feed:create-subscriber": "node sdk/create-subscriber.cjs",
+    "feed:smoke-auth": "node sdk/smoke-feed-auth.cjs",
     "proof:init-ao": "node sdk/init-proof-corpus.mjs",
     "proof:demo": "node sdk/proof-corpus-demo.cjs",
     "proof:live": "node sdk/live-eth-prover.mjs",

@@ -53,12 +53,19 @@ function authenticateToken(token, subscribers = parseSubscribers()) {
 function itemAllowedForSubscriber(item, subscriber) {
   if (!subscriber) return false;
   if (subscriber.scopes.includes("*")) return true;
-  return subscriber.scopes.some(scope =>
-    scope === item.feed_id ||
-    scope === item.predicate ||
-    scope === `${item.feed_id}:${item.subject}` ||
-    scope === `${item.predicate}:${item.subject}`
-  );
+  const allowedScopes = new Set([
+    item.feed_id,
+    item.predicate,
+    item.subject,
+    `${item.feed_id}:${item.subject}`,
+    `${item.predicate}:${item.subject}`,
+    `feed:${item.feed_id}`,
+    `predicate:${item.predicate}`,
+    `subject:${item.subject}`,
+    `feed:${item.feed_id}:subject:${item.subject}`,
+    `predicate:${item.predicate}:subject:${item.subject}`
+  ]);
+  return subscriber.scopes.some(scope => allowedScopes.has(scope));
 }
 
 function filterItemsForSubscriber(items, subscriber) {

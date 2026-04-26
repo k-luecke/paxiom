@@ -260,7 +260,8 @@ async function testFeedStore() {
 async function testFeedAuthScopes() {
   const subscribers = parseSubscribers({
     PAXIOM_FEED_SUBSCRIBERS: JSON.stringify([
-      { id: 'slot0-only', token_hash: hashToken('slot0-token'), scopes: ['uniswap_v3_slot0'] },
+      { id: 'slot0-only', token_hash: hashToken('slot0-token'), scopes: ['predicate:uniswap_v3_slot0'] },
+      { id: 'pool-only', token_hash: hashToken('pool-token'), scopes: ['subject:ethereum:pool:slot0'] },
       { id: 'all-access', token_hash: hashToken('all-token'), scopes: ['*'] }
     ])
   });
@@ -277,6 +278,7 @@ async function testFeedAuthScopes() {
   };
 
   const scoped = authenticateToken('slot0-token', subscribers);
+  const pool = authenticateToken('pool-token', subscribers);
   const all = authenticateToken('all-token', subscribers);
 
   assert.strictEqual(scoped.id, 'slot0-only');
@@ -284,6 +286,8 @@ async function testFeedAuthScopes() {
   assert.strictEqual(authenticateToken('wrong-token', subscribers), null);
   assert.strictEqual(itemAllowedForSubscriber(slot0, scoped), true);
   assert.strictEqual(itemAllowedForSubscriber(storage, scoped), false);
+  assert.strictEqual(itemAllowedForSubscriber(slot0, pool), true);
+  assert.strictEqual(itemAllowedForSubscriber(storage, pool), false);
   assert.strictEqual(filterItemsForSubscriber([slot0, storage], scoped).length, 1);
   assert.strictEqual(filterItemsForSubscriber([slot0, storage], all).length, 2);
 }

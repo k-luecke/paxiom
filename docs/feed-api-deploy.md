@@ -31,13 +31,18 @@ sudo chown root:paxiom /etc/paxiom/*.env /etc/paxiom/subscribers.json
 sudo chmod 640 /etc/paxiom/*.env /etc/paxiom/subscribers.json
 ```
 
-Generate a pilot token hash:
+Generate a pilot subscriber token. The command writes only the token hash to the subscriber file
+and prints the one-time token to stdout:
 
 ```bash
-npm run feed:hash-token -- "replace-with-long-random-token"
+npm run feed:create-subscriber -- \
+  --id pilot-uniswap-slot0 \
+  --file /etc/paxiom/subscribers.json \
+  --scope predicate:uniswap_v3_slot0 \
+  --scope subject:ethereum:0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640:slot0
 ```
 
-Paste the resulting hash into `/etc/paxiom/subscribers.json`.
+Send the printed `token` value to the subscriber once. Do not store the plain token in git.
 
 ## 3. Install systemd Units
 
@@ -77,6 +82,12 @@ curl "https://api.paxiom.org/v1/predicates?include_planned=false"
 
 curl "https://api.paxiom.org/v1/feed/latest?limit=3" \
   -H "x-paxiom-feed-token: $PAXIOM_FEED_TOKEN"
+```
+
+For a local end-to-end auth smoke test, create a local subscriber, write one feed item, then run:
+
+```bash
+npm run feed:smoke-auth
 ```
 
 ## Subscriber Scope Format
