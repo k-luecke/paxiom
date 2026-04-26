@@ -26,6 +26,10 @@ Start with `uniswap_v3_slot0` for selected high-volume pools.
 - Setup command: `npm run zk:setup:slot0`
 - Prove command: `npm run zk:prove:slot0 -- --slot0 <hex> --subject <subject> --block <n> --state-root <root>`
 - Live lane command: `npm run zk:live:slot0 -- --pool <pool> --block finalized`
+- AO coordinator process: `ao-processes/zk-coordinator.lua`
+- AO submission command: `npm run zk:ao:slot0 -- --process <ao-process> --pool <pool>`
+- Prover backend selector: `PAXIOM_ZK_PROVER_BACKEND=snarkjs|rapidsnark|external`
+- In-circuit MPT plan: `zk/circuits/ethereum_storage_inclusion.md`
 
 - Build the circuit/prover for storage inclusion plus slot0 decoding.
 - Generate witnesses from finalized Ethereum blocks.

@@ -16,6 +16,7 @@
     "zk:setup:slot0": "node sdk/setup-zk-slot0.cjs",
     "zk:prove:slot0": "node sdk/prove-zk-slot0.cjs",
     "zk:live:slot0": "node sdk/prove-live-zk-slot0.cjs",
+    "zk:ao:slot0": "node sdk/submit-zk-slot0-to-ao.mjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],

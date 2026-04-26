@@ -32,8 +32,10 @@ const {
   createAoDispatch,
   createRecursiveAggregationPlan,
   createZkPredicateJob,
-  createZkProofReceipt
+  createZkProofReceipt,
+  receiptKey
 } = require('../core/zk-pipeline');
+const { backendFromEnv } = require('../sdk/prover-backend.cjs');
 const { mkdtempSync, rmSync } = require('fs');
 const { join } = require('path');
 const { tmpdir } = require('os');
@@ -354,7 +356,17 @@ async function testZkPipelinePlansParallelJobs() {
   assert.ok(assignment.worker_id.startsWith('ao-zk-worker-'));
   assert.strictEqual(dispatch.tags.find(tag => tag.name === 'Action').value, 'ProveZkPredicate');
   assert.strictEqual(receipt.job_id, job.job_id);
+  assert.strictEqual(receiptKey(receipt), `24962138:uniswap_v3_slot0:${job.subject}:${job.job_id}`);
   assert.strictEqual(plan.receipt_commitments[0], receipt.commitment);
+}
+
+async function testProverBackendSelection() {
+  assert.strictEqual(backendFromEnv({}).kind, 'snarkjs');
+  assert.strictEqual(backendFromEnv({ PAXIOM_ZK_PROVER_BACKEND: 'rapidsnark' }).mode, 'accelerated-native');
+  assert.throws(
+    () => backendFromEnv({ PAXIOM_ZK_PROVER_BACKEND: 'external' }),
+    /PAXIOM_ZK_PROVER_CMD/
+  );
 }
 
 (async () => {
@@ -370,6 +382,7 @@ async function testZkPipelinePlansParallelJobs() {
   await testFeedAuthScopes();
   await testPredicateCatalog();
   await testZkPipelinePlansParallelJobs();
+  await testProverBackendSelection();
   console.log('All tests passed');
 })().catch(err => {
   console.error(err);

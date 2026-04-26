@@ -116,10 +116,16 @@ function createRecursiveAggregationPlan(receipts, options = {}) {
   };
 }
 
+function receiptKey(receipt) {
+  assert(receipt && receipt.kind === "ZK_PREDICATE_PROOF", "Invalid ZK predicate proof receipt");
+  return `${receipt.block_number}:${receipt.predicate}:${receipt.subject}:${receipt.job_id}`;
+}
+
 module.exports = {
   assignJobToWorker,
   createAoDispatch,
   createRecursiveAggregationPlan,
   createZkPredicateJob,
-  createZkProofReceipt
+  createZkProofReceipt,
+  receiptKey
 };

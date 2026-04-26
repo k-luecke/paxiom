@@ -5,10 +5,10 @@ const { createZkPredicateJob, createZkProofReceipt } = require("../core/zk-pipel
 const { hashState } = require("../core/hash");
 const { createSlot0ZkInput } = require("../core/slot0-zk-input");
 const { decodeSlot0 } = require("../core/uniswap-v3");
+const { assertBackendAvailable, backendFromEnv } = require("./prover-backend.cjs");
 
 const repoRoot = resolve(__dirname, "..");
 const artifactDir = join(repoRoot, ".paxiom-runtime", "zk", "uniswap_v3_slot0");
-const snarkjs = join(repoRoot, "node_modules", ".bin", "snarkjs");
 const wasm = join(artifactDir, "uniswap_v3_slot0.wasm");
 const zkey = join(artifactDir, "uniswap_v3_slot0_final.zkey");
 const vkey = join(artifactDir, "verification_key.json");
@@ -43,12 +43,21 @@ function run(cmd, args) {
   execFileSync(cmd, args, { cwd: repoRoot, stdio: "inherit" });
 }
 
+function runGroth16({ backend, inputPath, proofPath, publicPath }) {
+  if (backend.kind !== "snarkjs") {
+    throw new Error(`${backend.kind} backend is configured but not wired for Circom witness generation yet`);
+  }
+  run(backend.command, ["groth16", "fullprove", inputPath, wasm, zkey, proofPath, publicPath]);
+  run(backend.command, ["groth16", "verify", vkey, publicPath, proofPath]);
+}
+
 async function proveSlot0Zk(args = {}) {
   if (!args.slot0 || !args.subject || !Number.isInteger(args.block_number) || !args.state_root) {
     throw new Error("slot0, subject, block_number, and state_root are required");
   }
 
   for (const file of [wasm, zkey, vkey]) requireArtifact(file);
+  const backend = assertBackendAvailable(backendFromEnv());
 
   const outDir = join(repoRoot, ".paxiom-runtime", "zk", "proofs");
   mkdirSync(outDir, { recursive: true });
@@ -59,8 +68,7 @@ async function proveSlot0Zk(args = {}) {
   const publicPath = join(outDir, "slot0-public.json");
   writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
 
-  run(snarkjs, ["groth16", "fullprove", inputPath, wasm, zkey, proofPath, publicPath]);
-  run(snarkjs, ["groth16", "verify", vkey, publicPath, proofPath]);
+  runGroth16({ backend, inputPath, proofPath, publicPath });
 
   const proof = JSON.parse(readFileSync(proofPath, "utf8"));
   const publicSignals = JSON.parse(readFileSync(publicPath, "utf8"));
@@ -108,6 +116,7 @@ async function proveSlot0Zk(args = {}) {
     receipt,
     proof,
     publicSignals,
+    prover_backend: backend,
     verification_key_path: vkey
   };
 
