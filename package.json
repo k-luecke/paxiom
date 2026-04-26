@@ -15,6 +15,7 @@
     "proof:uniswap-v3-slot0": "node sdk/prove-uniswap-v3-slot0.cjs",
     "zk:setup:slot0": "node sdk/setup-zk-slot0.cjs",
     "zk:prove:slot0": "node sdk/prove-zk-slot0.cjs",
+    "zk:live:slot0": "node sdk/prove-live-zk-slot0.cjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],

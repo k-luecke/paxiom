@@ -25,6 +25,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--block=")) args.block_number = Number(arg.slice("--block=".length));
     else if (arg === "--state-root") args.state_root = argv[++i];
     else if (arg.startsWith("--state-root=")) args.state_root = arg.slice("--state-root=".length);
+    else if (arg === "--mpt-proof-hash") args.mpt_proof_hash = argv[++i];
+    else if (arg.startsWith("--mpt-proof-hash=")) args.mpt_proof_hash = arg.slice("--mpt-proof-hash=".length);
     else if (arg === "--out") args.out = argv[++i];
     else if (arg.startsWith("--out=")) args.out = arg.slice("--out=".length);
   }
@@ -41,11 +43,9 @@ function run(cmd, args) {
   execFileSync(cmd, args, { cwd: repoRoot, stdio: "inherit" });
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+async function proveSlot0Zk(args = {}) {
   if (!args.slot0 || !args.subject || !Number.isInteger(args.block_number) || !args.state_root) {
-    console.error("Usage: npm run zk:prove:slot0 -- --slot0 <hex> --subject <subject> --block <n> --state-root <root>");
-    process.exit(1);
+    throw new Error("slot0, subject, block_number, and state_root are required");
   }
 
   for (const file of [wasm, zkey, vkey]) requireArtifact(file);
@@ -66,12 +66,19 @@ async function main() {
   const publicSignals = JSON.parse(readFileSync(publicPath, "utf8"));
   const decoded = decodeSlot0(args.slot0);
   const proofHash = hashState({ proof, publicSignals });
+  const witnessCommitment = hashState({
+    slot0: args.slot0,
+    decoded,
+    mpt_proof_hash: args.mpt_proof_hash || null,
+    state_root: args.state_root,
+    block_number: args.block_number
+  });
   const job = createZkPredicateJob({
     predicate: "uniswap_v3_slot0",
     subject: args.subject,
     block_number: args.block_number,
     state_root: args.state_root,
-    witness_commitment: hashState({ slot0: args.slot0, decoded }),
+    witness_commitment: witnessCommitment,
     target_proof_system: "groth16-bn128-uniswap-v3-slot0-dev",
     public_inputs: {
       packed: input.packed,
@@ -106,18 +113,43 @@ async function main() {
 
   const outputPath = args.out ? resolve(args.out) : join(outDir, "slot0-proof-bundle.json");
   writeFileSync(outputPath, `${JSON.stringify(bundle, null, 2)}\n`);
+  return {
+    output: outputPath,
+    bundle,
+    job,
+    receipt,
+    proof,
+    publicSignals,
+    proof_hash: proofHash
+  };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.slot0 || !args.subject || !Number.isInteger(args.block_number) || !args.state_root) {
+    console.error("Usage: npm run zk:prove:slot0 -- --slot0 <hex> --subject <subject> --block <n> --state-root <root>");
+    process.exit(1);
+  }
+
+  const result = await proveSlot0Zk(args);
   console.log(JSON.stringify({
     status: "ok",
-    output: outputPath,
-    job_id: job.job_id,
-    receipt_commitment: receipt.commitment,
-    proof_hash: proofHash,
-    predicate: receipt.predicate,
-    block_number: receipt.block_number
+    output: result.output,
+    job_id: result.job.job_id,
+    receipt_commitment: result.receipt.commitment,
+    proof_hash: result.proof_hash,
+    predicate: result.receipt.predicate,
+    block_number: result.receipt.block_number
   }, null, 2));
 }
 
-main().catch(err => {
-  console.error(err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error(err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  proveSlot0Zk
+};

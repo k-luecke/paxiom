@@ -263,12 +263,18 @@ async function testFeedStore() {
       state_root: root(5),
       proof_system: 'eip1186-mpt+uniswap-v3-slot0',
       proof_hash: 'proof-hash',
+      proof_receipt: { kind: 'ZK_PREDICATE_PROOF', commitment: 'zk-receipt' },
+      witness_commitment: 'witness-commitment',
+      mpt_proof_hash: 'mpt-proof-hash',
       paxiom_commitment: 'fact-commitment',
       verification_level: 'mpt_verified'
     }, { signingKey: 'test-key' });
 
     appendFeedItem(item, file);
     assert.strictEqual(item.custody, 'none');
+    assert.strictEqual(item.proof_receipt.commitment, 'zk-receipt');
+    assert.strictEqual(item.witness_commitment, 'witness-commitment');
+    assert.strictEqual(item.mpt_proof_hash, 'mpt-proof-hash');
     assert.strictEqual(item.signature.length, 64);
     assert.strictEqual(latestFeedItems({ limit: 1, file }).length, 1);
 
