@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "proof:demo": "node sdk/proof-corpus-demo.cjs",
+    "proof:live": "node sdk/live-eth-prover.mjs",
+    "proof:storage": "node sdk/prove-eth-storage.cjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],
@@ -11,7 +14,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ethereumjs/rlp": "^10.1.1",
+    "@ethereumjs/trie": "^6.2.1",
     "@permaweb/aoconnect": "^0.0.93",
+    "ethereum-cryptography": "^3.2.0",
     "viem": "^2.47.5"
   }
 }

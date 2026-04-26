@@ -186,6 +186,8 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - Arbitrum Sepolia OApp deployment
 - Cross-chain peer wiring and first cross-chain message
 - Mainnet OApp deployment
+- Proof corpus spine for genesis-to-present aggregation and fact proofs
+- Real EIP-1186 Ethereum storage proof verification and live finalized-block proving loop
 
 ### Roadmap
 
@@ -193,6 +195,8 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - Genesis ZK proof generation and permanent storage
 - AO-based incremental proof generation pipeline
 - On-chain Solidity verifier contract
+- Recursive proof corpus with queryable Ethereum fact commitments
+- EIP-1186 fact proof adapters for account and storage predicates
 
 **Phase 2 — PaxiomPool**
 - Unified cross-chain liquidity pool
