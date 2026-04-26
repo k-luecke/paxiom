@@ -14,7 +14,7 @@ interface IERC20 {
 contract PaxiomPool is OApp {
 
     // ─── constants ───────────────────────────────────────────────
-    uint256 public constant COLLATERAL_BPS   = 1000;  // 10% collateral
+    uint256 public constant COLLATERAL_BPS   = 10000; // 100% collateral until under-collateralized credit is risk-managed
     uint256 public constant PROTOCOL_FEE_BPS = 9;     // 0.09% total fee
     uint256 public constant PROTOCOL_SHARE   = 30;    // 30% of fee to protocol
     uint256 public constant LP_SHARE         = 70;    // 70% of fee to LPs
@@ -35,6 +35,7 @@ contract PaxiomPool is OApp {
 
     mapping(address => uint256) public lpShares;
     uint256 public totalShares;
+    uint256 private locked;
 
     struct Loan {
         address borrower;
@@ -47,6 +48,13 @@ contract PaxiomPool is OApp {
     }
 
     mapping(uint256 => Loan) public loans;
+
+    modifier nonReentrant() {
+        require(locked == 0, "Reentrancy");
+        locked = 1;
+        _;
+        locked = 0;
+    }
 
     // ─── events ──────────────────────────────────────────────────
     event Deposited(address indexed lp, uint256 amount, uint256 shares);
@@ -70,7 +78,7 @@ contract PaxiomPool is OApp {
 
     // ─── liquidity provider functions ────────────────────────────
 
-    function deposit(uint256 amount) external {
+    function deposit(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
         require(IERC20(USDC).transferFrom(msg.sender, address(this), amount), "Transfer failed");
 
@@ -85,7 +93,7 @@ contract PaxiomPool is OApp {
         emit Deposited(msg.sender, amount, shares);
     }
 
-    function withdraw(uint256 shares) external {
+    function withdraw(uint256 shares) external nonReentrant {
         require(shares > 0 && lpShares[msg.sender] >= shares, "Insufficient shares");
 
         uint256 amount = (shares * totalLiquidity) / totalShares;
@@ -101,9 +109,10 @@ contract PaxiomPool is OApp {
 
     // ─── borrower functions ───────────────────────────────────────
 
-    function requestLoan(uint256 loanAmount) external payable {
+    function requestLoan(uint256 loanAmount) external payable nonReentrant {
         require(loanAmount > 0, "Zero amount");
-        require(IERC20(USDC).balanceOf(address(this)) >= loanAmount, "Insufficient liquidity");
+        require(totalLiquidity >= loanAmount, "Insufficient liquidity");
+        require(IERC20(USDC).balanceOf(address(this)) >= loanAmount, "Insufficient balance");
 
         uint256 collateral = (loanAmount * COLLATERAL_BPS) / BPS_DENOM;
         uint256 fee        = (loanAmount * PROTOCOL_FEE_BPS) / BPS_DENOM;
@@ -121,6 +130,7 @@ contract PaxiomPool is OApp {
             repaid:     false
         });
 
+        totalLiquidity -= loanAmount;
         require(IERC20(USDC).transfer(msg.sender, loanAmount), "Loan transfer failed");
 
         bytes memory payload = abi.encode(
@@ -140,7 +150,7 @@ contract PaxiomPool is OApp {
         emit LoanIssued(loanId, msg.sender, loanAmount);
     }
 
-    function repayLoan(uint256 loanId) external {
+    function repayLoan(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(loan.borrower == msg.sender, "Not borrower");
@@ -152,7 +162,7 @@ contract PaxiomPool is OApp {
         _settleLoan(loanId);
     }
 
-    function liquidateExpired(uint256 loanId) external {
+    function liquidateExpired(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(block.timestamp > loan.expiry, "Not expired");
@@ -185,12 +195,13 @@ contract PaxiomPool is OApp {
     // ─── LayerZero receive ────────────────────────────────────────
 
     function _lzReceive(
-        Origin calldata,
+        Origin calldata _origin,
         bytes32,
         bytes calldata _message,
         address,
         bytes calldata
     ) internal override {
+        require(_origin.srcEid == peerEid, "Invalid source chain");
         (uint8 msgType, uint256 loanId) = abi.decode(_message, (uint8, uint256));
 
         if (msgType == MSG_EXEC_CONFIRM) {
@@ -231,6 +242,7 @@ contract PaxiomPool is OApp {
     // ─── admin ────────────────────────────────────────────────────
 
     function setTreasury(address _treasury) external onlyOwner {
+        require(_treasury != address(0), "Zero treasury");
         protocolTreasury = _treasury;
     }
 

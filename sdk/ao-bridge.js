@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from 'fs';
 import { spawn } from 'child_process';
+import { normalizeOpportunity } from './execution-policy.js';
 
 const LOG_FILE = '/home/mk19/paxiom/opportunities.log';
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
@@ -34,10 +35,25 @@ function markGatewayFailed(gateway) {
   console.log(`[${new Date().toISOString()}] Switched to: ${getCurrentGateway()}`);
 }
 
+function luaString(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
+}
+
 // FIX: replace execSync shell interpolation with spawn + stdin pipe.
 // Field values from the log file are passed through argv and stdin,
 // never interpolated into a shell string.
 function sendToAO(opportunity, attemptIndex = 0) {
+  try {
+    opportunity = normalizeOpportunity(opportunity);
+  } catch(e) {
+    console.log(`[AO-BRIDGE] Rejected opportunity: ${e.message}`);
+    return;
+  }
+
   if (attemptIndex >= GATEWAYS.length) {
     console.log(`[${new Date().toISOString()}] All gateways failed — skipping`);
     return;
@@ -53,11 +69,11 @@ function sendToAO(opportunity, attemptIndex = 0) {
     `  Target = "${MONITOR_PROCESS}",`,
     `  Action = "EvaluateOpportunity",`,
     `  Spreadbps = "${spreadBps}",`,
-    `  Asset = "${opportunity.asset}",`,
-    `  Buychain = "${opportunity.buyChain}",`,
-    `  Sellchain = "${opportunity.sellChain}",`,
-    `  Buyprice = "${opportunity.buyPrice}",`,
-    `  Sellprice = "${opportunity.sellPrice}",`,
+    `  Asset = "${luaString(opportunity.asset)}",`,
+    `  Buychain = "${luaString(opportunity.buyChain)}",`,
+    `  Sellchain = "${luaString(opportunity.sellChain)}",`,
+    `  Buyprice = "${luaString(opportunity.buyPrice || '')}",`,
+    `  Sellprice = "${luaString(opportunity.sellPrice || '')}",`,
     `  Capturable = "${opportunity.capturable}",`,
     `  Timestamp = tostring(os.time() * 1000)`,
     '})',
@@ -117,10 +133,9 @@ function checkLog() {
 
     for (const line of newLines) {
       try {
-        const opp = JSON.parse(line);
+        const opp = normalizeOpportunity(JSON.parse(line));
         if (opp.timestamp === lastProcessed) continue;
-        if (parseFloat(opp.spreadPct) < MIN_SPREAD) continue;
-        if (!opp.capturable) continue;
+        if (Number(opp.spreadPct) < MIN_SPREAD) continue;
 
         lastProcessed = opp.timestamp;
         console.log(`[${new Date().toISOString()}] Capturable: ${opp.asset} ${opp.spreadPct}% ${opp.buyChain} -> ${opp.sellChain}`);

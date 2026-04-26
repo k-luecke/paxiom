@@ -65,10 +65,12 @@ contract PaxiomFlashLoan {
     // Entry point
     function executeArb(
         uint256 loanAmount,
-        bool buyOnUniswap
+        bool buyOnUniswap,
+        uint256 minIntermediateOut,
+        uint256 minFinalBalance
     ) external {
         require(msg.sender == owner, "Not owner");
-        bytes memory params = abi.encode(buyOnUniswap);
+        bytes memory params = abi.encode(buyOnUniswap, minIntermediateOut, minFinalBalance);
         IPool(AAVE_POOL).flashLoanSimple(
             address(this),
             USDC,
@@ -88,20 +90,24 @@ contract PaxiomFlashLoan {
     ) external returns (bool) {
         require(msg.sender == AAVE_POOL, "Not Aave");
 
-        bool buyOnUniswap = abi.decode(params, (bool));
+        (bool buyOnUniswap, uint256 minIntermediateOut, uint256 minFinalBalance) =
+            abi.decode(params, (bool, uint256, uint256));
         uint256 totalOwed = amount + premium;
+        require(minFinalBalance >= totalOwed, "Min final below debt");
 
         if (buyOnUniswap) {
             // Buy WETH cheap on Uniswap, sell expensive on Aerodrome
-            _swapUniswap(USDC, WETH, amount, 500);
+            _swapUniswap(USDC, WETH, amount, 500, minIntermediateOut);
             uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
-            _swapAerodrome(WETH, USDC, wethBalance, false);
+            _swapAerodrome(WETH, USDC, wethBalance, false, minFinalBalance);
         } else {
             // Buy WETH cheap on Aerodrome, sell expensive on Uniswap
-            _swapAerodrome(USDC, WETH, amount, false);
+            _swapAerodrome(USDC, WETH, amount, false, minIntermediateOut);
             uint256 wethBalance = IERC20(WETH).balanceOf(address(this));
-            _swapUniswap(WETH, USDC, wethBalance, 500);
+            _swapUniswap(WETH, USDC, wethBalance, 500, minFinalBalance);
         }
+
+        require(IERC20(asset).balanceOf(address(this)) >= minFinalBalance, "Unprofitable");
 
         // Repay Aave
         IERC20(asset).approve(AAVE_POOL, totalOwed);
@@ -112,7 +118,8 @@ contract PaxiomFlashLoan {
         address tokenIn,
         address tokenOut,
         uint256 amountIn,
-        uint24 fee
+        uint24 fee,
+        uint256 amountOutMinimum
     ) internal returns (uint256) {
         IERC20(tokenIn).approve(UNISWAP_ROUTER, amountIn);
         IUniswapRouter.ExactInputSingleParams memory params =
@@ -122,7 +129,7 @@ contract PaxiomFlashLoan {
                 fee: fee,
                 recipient: address(this),
                 amountIn: amountIn,
-                amountOutMinimum: 0,
+                amountOutMinimum: amountOutMinimum,
                 sqrtPriceLimitX96: 0
             });
         return IUniswapRouter(UNISWAP_ROUTER).exactInputSingle(params);
@@ -132,7 +139,8 @@ contract PaxiomFlashLoan {
         address tokenIn,
         address tokenOut,
         uint256 amountIn,
-        bool stable
+        bool stable,
+        uint256 amountOutMin
     ) internal returns (uint256) {
         IERC20(tokenIn).approve(AERODROME_ROUTER, amountIn);
 
@@ -146,7 +154,7 @@ contract PaxiomFlashLoan {
 
         uint256[] memory amounts = IAerodromeRouter(AERODROME_ROUTER).swapExactTokensForTokens(
             amountIn,
-            0,
+            amountOutMin,
             routes,
             address(this),
             block.timestamp + 300

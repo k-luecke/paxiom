@@ -9,6 +9,8 @@ import { optimismSepolia } from 'viem/chains';
 // If you need external access, put an authenticated reverse proxy in front.
 const PORT = 3000;
 const BIND = '127.0.0.1';
+const ADMIN_TOKEN = process.env.PAXIOM_ADMIN_TOKEN || '';
+const SIGNAL_TOKEN = process.env.PAXIOM_SIGNAL_TOKEN || '';
 // ─────────────────────────────────────────────────────────────
 
 const BASE = '/home/mk19/paxiom';
@@ -175,6 +177,15 @@ async function getPoolState() {
 function setJsonHeaders(res) {
   res.setHeader('Content-Type', 'application/json');
 }
+
+function requireAdmin(req) {
+  if (!ADMIN_TOKEN) {
+    throw new Error('Admin actions disabled; set PAXIOM_ADMIN_TOKEN');
+  }
+  if (req.headers['x-paxiom-admin-token'] !== ADMIN_TOKEN) {
+    throw new Error('Invalid admin token');
+  }
+}
 // ─────────────────────────────────────────────────────────────
 
 const server = createServer(async (req, res) => {
@@ -199,6 +210,13 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify({ lines: getLogTail(`${BASE}/executor.log`, 30) }));
 
   } else if (req.method === 'POST' && url.startsWith('/api/process/')) {
+    try {
+      requireAdmin(req);
+    } catch(e) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: e.message }));
+      return;
+    }
     const parts = url.split('/');
     const action = parts[3];
     const name   = parts[4];
@@ -217,15 +235,29 @@ const server = createServer(async (req, res) => {
     });
 
   } else if (req.method === 'POST' && url === '/api/signal') {
+    try {
+      requireAdmin(req);
+      if (!SIGNAL_TOKEN) throw new Error('Signal proxy disabled; set PAXIOM_SIGNAL_TOKEN');
+    } catch(e) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: e.message }));
+      return;
+    }
     let body = '';
-    req.on('data', d => body += d);
+    req.on('data', d => {
+      body += d;
+      if (body.length > 4096) req.destroy();
+    });
     req.on('end', async () => {
       try {
         const opp = JSON.parse(body);
         // Forward to executor on localhost — executor also binds to 127.0.0.1
         const resp = await fetch('http://127.0.0.1:7070/signal', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-paxiom-signal-token': SIGNAL_TOKEN
+          },
           body: JSON.stringify(opp)
         });
         const result = await resp.json();
@@ -251,4 +283,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, BIND, () => {
   console.log(`Paxiom UI backend running on http://${BIND}:${PORT}`);
   console.log('NOTE: bound to localhost only — use SSH tunnel or reverse proxy for remote access');
+  console.log(`Admin actions enabled: ${ADMIN_TOKEN ? 'yes' : 'no'}`);
 });

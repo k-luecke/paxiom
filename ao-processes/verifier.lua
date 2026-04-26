@@ -1,5 +1,21 @@
 local json = require('json')
 
+ADMIN = ADMIN or Owner
+TRUSTED_SUBMITTERS = TRUSTED_SUBMITTERS or {}
+TRUSTED_VERIFIERS = TRUSTED_VERIFIERS or {}
+
+local function isAdmin(msg)
+  return ADMIN ~= nil and msg.From == ADMIN
+end
+
+local function isTrustedSubmitter(msg)
+  return TRUSTED_SUBMITTERS[msg.From] == true
+end
+
+local function isTrustedVerifier(msg)
+  return TRUSTED_VERIFIERS[msg.From] == true
+end
+
 -- Paxiom verified state
 State = {
   latest_proven_slot = 0,
@@ -17,6 +33,15 @@ Handlers.add(
     return msg.Action == "StoreHeader"
   end,
   function(msg)
+    if not isTrustedSubmitter(msg) then
+      ao.send({
+        Target = msg.From,
+        Action = "HeaderRejected",
+        Data = json.encode({ error = "Sender is not an authorized submitter" })
+      })
+      return
+    end
+
     local header = json.decode(msg.Data)
 
     State.pending_count = State.pending_count + 1
@@ -46,6 +71,15 @@ Handlers.add(
     return msg.Action == "VerifyHeader"
   end,
   function(msg)
+    if not isTrustedVerifier(msg) then
+      ao.send({
+        Target = msg.From,
+        Action = "VerifyResult",
+        Data = json.encode({ verified = false, error = "Sender is not an authorized verifier" })
+      })
+      return
+    end
+
     local data = json.decode(msg.Data)
     local slot_key = tostring(data.slot)
 
@@ -63,6 +97,18 @@ Handlers.add(
     end
 
     if data.verified then
+      if tonumber(data.slot) <= tonumber(State.latest_proven_slot) then
+        ao.send({
+          Target = msg.From,
+          Action = "VerifyResult",
+          Data = json.encode({
+            slot = data.slot,
+            verified = false,
+            error = "Slot must increase monotonically"
+          })
+        })
+        return
+      end
       State.headers[slot_key].status = "verified"
       State.latest_proven_slot = data.slot
       State.latest_proven_state_root = State.headers[slot_key].state_root
@@ -83,6 +129,40 @@ Handlers.add(
         state_root = State.headers[slot_key].state_root
       })
     })
+  end
+)
+
+Handlers.add(
+  "set-trusted-submitter",
+  function(msg)
+    return msg.Action == "SetTrustedSubmitter"
+  end,
+  function(msg)
+    if not isAdmin(msg) then
+      ao.send({ Target = msg.From, Action = "ConfigRejected", Data = "Sender is not admin" })
+      return
+    end
+    local submitter = msg.Submitter or msg.From
+    local enabled = msg.Enabled ~= "false"
+    TRUSTED_SUBMITTERS[submitter] = enabled
+    ao.send({ Target = msg.From, Action = "TrustedSubmitterUpdated", Data = submitter .. " enabled=" .. tostring(enabled) })
+  end
+)
+
+Handlers.add(
+  "set-trusted-verifier",
+  function(msg)
+    return msg.Action == "SetTrustedVerifier"
+  end,
+  function(msg)
+    if not isAdmin(msg) then
+      ao.send({ Target = msg.From, Action = "ConfigRejected", Data = "Sender is not admin" })
+      return
+    end
+    local verifier = msg.Verifier or msg.From
+    local enabled = msg.Enabled ~= "false"
+    TRUSTED_VERIFIERS[verifier] = enabled
+    ao.send({ Target = msg.From, Action = "TrustedVerifierUpdated", Data = verifier .. " enabled=" .. tostring(enabled) })
   end
 )
 

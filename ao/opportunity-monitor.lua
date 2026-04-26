@@ -6,6 +6,8 @@ MIN_SPREAD_BPS = MIN_SPREAD_BPS or 60    -- 0.06% minimum
 MIN_SPREAD_FLASH = MIN_SPREAD_FLASH or 90 -- 0.09% for flash loan eligible
 COOLDOWN_MS = COOLDOWN_MS or 30000        -- 30 seconds between signals
 COMPLIANCE_PROCESS = COMPLIANCE_PROCESS or "w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I"
+ADMIN = ADMIN or Owner
+TRUSTED_SCANNERS = TRUSTED_SCANNERS or {}
 
 -- State
 LastSignalTime = LastSignalTime or 0
@@ -16,11 +18,28 @@ OpportunitiesFired = OpportunitiesFired or 0
 -- FIX: persist the last opportunity so GetStatus can include it
 LastOpportunity = LastOpportunity or nil
 
+local function isAdmin(msg)
+  return ADMIN ~= nil and msg.From == ADMIN
+end
+
+local function isTrustedScanner(msg)
+  return TRUSTED_SCANNERS[msg.From] == true
+end
+
 -- Receive opportunity data from scanner
 Handlers.add(
   "EvaluateOpportunity",
   function(msg) return msg.Action == "EvaluateOpportunity" end,
   function(msg)
+    if not isTrustedScanner(msg) then
+      ao.send({
+        Target = msg.From,
+        Action = "OpportunityRejected",
+        Data   = "Sender is not an authorized scanner"
+      })
+      return
+    end
+
     OpportunitiesEvaluated = OpportunitiesEvaluated + 1
 
     local spreadBps = tonumber(msg.Spreadbps or "0")
@@ -119,6 +138,14 @@ Handlers.add(
   "SetConfig",
   function(msg) return msg.Action == "SetConfig" end,
   function(msg)
+    if not isAdmin(msg) then
+      ao.send({
+        Target = msg.From,
+        Action = "ConfigRejected",
+        Data   = "Sender is not admin"
+      })
+      return
+    end
     if msg.Minspreadbps then
       MIN_SPREAD_BPS = tonumber(msg.Minspreadbps)
     end
@@ -129,6 +156,30 @@ Handlers.add(
       Target = msg.From,
       Action = "ConfigUpdated",
       Data   = "MinSpread: " .. MIN_SPREAD_BPS .. "bps Cooldown: " .. COOLDOWN_MS .. "ms"
+    })
+  end
+)
+
+Handlers.add(
+  "SetTrustedScanner",
+  function(msg) return msg.Action == "SetTrustedScanner" end,
+  function(msg)
+    if not isAdmin(msg) then
+      ao.send({
+        Target = msg.From,
+        Action = "TrustedScannerRejected",
+        Data   = "Sender is not admin"
+      })
+      return
+    end
+
+    local scanner = msg.Scanner or msg.From
+    local enabled = msg.Enabled ~= "false"
+    TRUSTED_SCANNERS[scanner] = enabled
+    ao.send({
+      Target = msg.From,
+      Action = "TrustedScannerUpdated",
+      Data   = scanner .. " enabled=" .. tostring(enabled)
     })
   end
 )

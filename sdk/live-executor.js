@@ -3,6 +3,12 @@ import { createServer } from 'http';
 import { createWalletClient, createPublicClient, http, parseEther, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
+import {
+  EXECUTION_ENABLED,
+  normalizeOpportunity,
+  requireExecutionEnabled,
+  requireSignalAuth
+} from './execution-policy.js';
 
 const LOG_FILE       = '/home/mk19/paxiom/opportunities.log';
 const EXEC_LOG       = '/home/mk19/paxiom/execution.log';
@@ -212,7 +218,7 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
     const realSpreadPct = ((usdcOut - usdcIn) / usdcIn) * 100;
     const netProfit = usdcOut - usdcIn - 0.50;
 
-    return { usdcIn, usdcOut, realSpreadPct, netProfit, wethOut };
+    return { usdcIn, usdcOut, usdcOutRaw: sellQuote.result[0], realSpreadPct, netProfit, wethOut };
   } catch(e) {
     console.log('[QUOTE] Failed: ' + e.message.slice(0, 80));
     return null;
@@ -222,6 +228,13 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
 
 async function executeLive(opp, source = 'POLL') {
   if (isExecuting) return false;
+  try {
+    requireExecutionEnabled();
+    opp = normalizeOpportunity(opp);
+  } catch(e) {
+    console.log(`[SKIP] ${e.message}`);
+    return false;
+  }
   const now = Date.now();
   if (lastExecTime > 0 && now - lastExecTime < COOLDOWN_MS) {
     const remaining = Math.round((COOLDOWN_MS - (now - lastExecTime)) / 1000);
@@ -247,6 +260,7 @@ async function executeLive(opp, source = 'POLL') {
     const buyWallet  = walletForChain(buyChainName);
     const sellWallet = walletForChain(sellChainName);
     const buyPublic  = publicForChain(buyChainName);
+    const sellPublic = publicForChain(sellChainName);
     // ─────────────────────────────────────────────────────────
 
     // Check USDC balance on buy side
@@ -260,21 +274,6 @@ async function executeLive(opp, source = 'POLL') {
       isExecuting = false;
       return false;
     }
-
-    // Build buy calldata — USDC → WETH on buy chain
-    const buyCalldata = encodeFunctionData({
-      abi: SWAP_ABI, functionName: 'exactInputSingle',
-      args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
-               fee: 500, recipient: account.address,
-               amountIn: TRADE_USDC, amountOutMinimum: 0n,
-               sqrtPriceLimitX96: 0n }]
-    });
-
-    // Approve USDC spend on buy side first
-    const approveCalldata = encodeFunctionData({
-      abi: ERC20_ABI, functionName: 'approve',
-      args: [buyCfg.router, TRADE_USDC]
-    });
 
     console.log('[SWAP] ' + buyChainName + ' buy USDC->ETH | ' + sellChainName + ' sell ETH->USDC');
     console.log('[SWAP] Trade size: $' + (Number(TRADE_USDC) / 1e6).toFixed(2) + ' USDC');
@@ -295,17 +294,62 @@ async function executeLive(opp, source = 'POLL') {
       isExecuting = false;
       return false;
     }
+
+    const sellWethBal = await sellPublic.readContract({
+      address: sellCfg.weth, abi: ERC20_ABI,
+      functionName: 'balanceOf', args: [account.address]
+    });
+
+    if (sellWethBal < quote.wethOut) {
+      console.log('[SKIP] Insufficient WETH inventory on ' + sellChainName + ': ' + sellWethBal);
+      lastExecTime = Date.now();
+      isExecuting = false;
+      return false;
+    }
+
+    const buyAmountOutMin = (quote.wethOut * (10_000n - SLIPPAGE)) / 10_000n;
+    const sellAmountOutMin = (quote.usdcOutRaw * (10_000n - SLIPPAGE)) / 10_000n;
+
+    // Build buy calldata — USDC → WETH on buy chain
+    const buyCalldata = encodeFunctionData({
+      abi: SWAP_ABI, functionName: 'exactInputSingle',
+      args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
+               fee: 500, recipient: account.address,
+               amountIn: TRADE_USDC, amountOutMinimum: buyAmountOutMin,
+               sqrtPriceLimitX96: 0n }]
+    });
+
+    const approveBuyCalldata = encodeFunctionData({
+      abi: ERC20_ABI, functionName: 'approve',
+      args: [buyCfg.router, TRADE_USDC]
+    });
+
+    const approveSellCalldata = encodeFunctionData({
+      abi: ERC20_ABI, functionName: 'approve',
+      args: [sellCfg.router, quote.wethOut]
+    });
     console.log(`[QUOTE] Profitable — proceeding with execution`);
     // ─────────────────────────────────────────────────────────
 
     const t0 = Date.now();
 
-    // Step 1 — approve on buy side (must precede swap)
-    const approveNonce = await buyPublic.getTransactionCount({ address: account.address });
-    const approveHash = await buyWallet.sendTransaction({
-      to: buyCfg.usdc, data: approveCalldata, gas: 60000n, nonce: approveNonce
-    });
-    await buyPublic.waitForTransactionReceipt({ hash: approveHash, timeout: 30000 });
+    // Step 1 — approve spend on both sides before swaps
+    const [approveBuyNonce, approveSellNonce] = await Promise.all([
+      buyPublic.getTransactionCount({ address: account.address }),
+      sellPublic.getTransactionCount({ address: account.address })
+    ]);
+    const [approveBuyHash, approveSellHash] = await Promise.all([
+      buyWallet.sendTransaction({
+        to: buyCfg.usdc, data: approveBuyCalldata, gas: 60000n, nonce: approveBuyNonce
+      }),
+      sellWallet.sendTransaction({
+        to: sellCfg.weth, data: approveSellCalldata, gas: 60000n, nonce: approveSellNonce
+      })
+    ]);
+    await Promise.all([
+      buyPublic.waitForTransactionReceipt({ hash: approveBuyHash, timeout: 30000 }),
+      sellPublic.waitForTransactionReceipt({ hash: approveSellHash, timeout: 30000 })
+    ]);
 
     // Step 2 — fetch fresh nonces after approve
     const [freshNonceOp, freshNonceBase, freshNonceArb] = await Promise.all([
@@ -329,7 +373,7 @@ async function executeLive(opp, source = 'POLL') {
       args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
                fee: 500, recipient: account.address,
                amountIn: quote.wethOut,
-               amountOutMinimum: 0n,
+               amountOutMinimum: sellAmountOutMin,
                sqrtPriceLimitX96: 0n }]
     });
     // ─────────────────────────────────────────────────────────
@@ -355,9 +399,9 @@ async function executeLive(opp, source = 'POLL') {
       timingGapMs, status: 'broadcast_success',
       estimatedProfit: quote.netProfit });
     Promise.all([
-      publicOp.waitForTransactionReceipt({ hash: chainAHash, timeout: 30000 }),
-      publicBase.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })
-    ]).then(([a, b]) => console.log(`Confirmed OP block ${a.blockNumber} | Base block ${b.blockNumber}`))
+      buyPublic.waitForTransactionReceipt({ hash: chainAHash, timeout: 30000 }),
+      sellPublic.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })
+    ]).then(([a, b]) => console.log(`Confirmed ${buyChainName} block ${a.blockNumber} | ${sellChainName} block ${b.blockNumber}`))
       .catch(() => console.log('Confirmation timeout'));
     return { chainAHash, chainBHash, timingGapMs };
   } catch(e) {
@@ -375,13 +419,23 @@ async function executeLive(opp, source = 'POLL') {
 
 const server = createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/signal') {
+    try {
+      requireSignalAuth(req);
+    } catch(e) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+      return;
+    }
     let body = '';
-    req.on('data', d => body += d);
+    req.on('data', d => {
+      body += d;
+      if (body.length > 4096) req.destroy();
+    });
     req.on('end', async () => {
       try {
-        const opp = JSON.parse(body);
+        const opp = normalizeOpportunity(JSON.parse(body));
         console.log(`\n[AO SIGNAL] ${opp.asset} ${opp.spreadPct}%`);
-        if (parseFloat(opp.spreadPct) < MIN_SPREAD) {
+        if (Number(opp.spreadPct) < MIN_SPREAD) {
           res.writeHead(200); res.end(JSON.stringify({ status: 'skipped', reason: 'below threshold' })); return;
         }
         const result = await executeLive(opp, 'AO');
@@ -410,11 +464,16 @@ async function poll() {
     if (lastExecTime > 0 && now - lastExecTime < COOLDOWN_MS) return;
 
     for (const opp of recent) {
-      if (opp.timestamp === lastSignalId) continue;
-      if (parseFloat(opp.spreadPct) < MIN_SPREAD) continue;
-      if (!opp.capturable) continue;
-      lastSignalId = opp.timestamp;
-      await executeLive(opp, 'POLL');
+      let normalized;
+      try {
+        normalized = normalizeOpportunity(opp);
+      } catch(e) {
+        continue;
+      }
+      if (normalized.timestamp === lastSignalId) continue;
+      if (Number(normalized.spreadPct) < MIN_SPREAD) continue;
+      lastSignalId = normalized.timestamp;
+      await executeLive(normalized, 'POLL');
       break;
     }
   } catch(e) {}
@@ -423,6 +482,7 @@ async function poll() {
 console.log('Paxiom Live Executor — Testnet Broadcast');
 console.log(`Wallet: ${account.address}`);
 console.log(`Min spread: ${MIN_SPREAD}%  Cooldown: ${COOLDOWN_MS/1000}s  Port: ${HTTP_PORT}\n`);
+console.log(`Execution enabled: ${EXECUTION_ENABLED ? 'yes' : 'no'}\n`);
 
 setInterval(poll, CHECK_INTERVAL);
 poll();
