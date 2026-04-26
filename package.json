@@ -13,6 +13,8 @@
     "proof:live": "node sdk/live-eth-prover.mjs",
     "proof:storage": "node sdk/prove-eth-storage.cjs",
     "proof:uniswap-v3-slot0": "node sdk/prove-uniswap-v3-slot0.cjs",
+    "zk:setup:slot0": "node sdk/setup-zk-slot0.cjs",
+    "zk:prove:slot0": "node sdk/prove-zk-slot0.cjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],
@@ -25,5 +27,9 @@
     "@permaweb/aoconnect": "^0.0.93",
     "ethereum-cryptography": "^3.2.0",
     "viem": "^2.47.5"
+  },
+  "devDependencies": {
+    "circom": "^0.5.46",
+    "snarkjs": "^0.7.6"
   }
 }

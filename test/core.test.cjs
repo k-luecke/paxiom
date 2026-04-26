@@ -12,6 +12,7 @@ const {
   createSegmentProof
 } = require('../core/proof-corpus');
 const { decodeSlot0 } = require('../core/uniswap-v3');
+const { createSlot0ZkInput } = require('../core/slot0-zk-input');
 const {
   appendFeedItem,
   createFeedItem,
@@ -234,6 +235,20 @@ async function testUniswapV3Slot0Decode() {
   assert.strictEqual(decoded.unlocked, true);
 }
 
+async function testSlot0ZkInputMatchesDecoder() {
+  const value = '0x14402d302d3002003087c00000000000050e9746adb56d1f730441fac50a7';
+  const decoded = decodeSlot0(value);
+  const input = createSlot0ZkInput(value);
+
+  assert.strictEqual(input.sqrtPriceX96, decoded.sqrtPriceX96);
+  assert.strictEqual(input.observationIndex, decoded.observationIndex);
+  assert.strictEqual(input.observationCardinality, decoded.observationCardinality);
+  assert.strictEqual(input.observationCardinalityNext, decoded.observationCardinalityNext);
+  assert.strictEqual(input.feeProtocol, decoded.feeProtocol);
+  assert.strictEqual(input.unlockedByte, decoded.unlocked ? '1' : '0');
+  assert.strictEqual(input.tickRaw, String((BigInt(decoded.tick) + (1n << 24n)) % (1n << 24n)));
+}
+
 async function testFeedStore() {
   const dir = mkdtempSync(join(tmpdir(), 'paxiom-feed-'));
   const file = join(dir, 'feed.jsonl');
@@ -344,6 +359,7 @@ async function testZkPipelinePlansParallelJobs() {
   await testProofCorpusRejectsGaps();
   await testFactProofBindsToCorpus();
   await testUniswapV3Slot0Decode();
+  await testSlot0ZkInputMatchesDecoder();
   await testFeedStore();
   await testFeedAuthScopes();
   await testPredicateCatalog();
