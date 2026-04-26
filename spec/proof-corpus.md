@@ -175,12 +175,34 @@ Endpoints:
 
 ```text
 GET /health
+GET /v1/predicates
+GET /v1/predicates/:id
 GET /v1/feed/latest
 GET /v1/feed/subjects
 GET /v1/feed/commitment/:commitment
 ```
 
-Set `PAXIOM_FEED_TOKEN` to require an `x-paxiom-feed-token` header.
+Feed data endpoints require an `x-paxiom-feed-token` header by default. Use one of:
+
+```bash
+PAXIOM_FEED_TOKEN=<single-token>
+```
+
+or scoped subscribers:
+
+```bash
+PAXIOM_FEED_SUBSCRIBERS='[
+  {
+    "id": "subscriber-a",
+    "token_hash": "<sha256-token-hash>",
+    "scopes": ["uniswap_v3_slot0"]
+  }
+]'
+```
+
+Scopes can be `*`, a `feed_id`, a predicate, `feed_id:subject`, or `predicate:subject`.
+
+Set `PAXIOM_FEED_PUBLIC_READ=true` only for local demos or intentionally public mirrors.
 
 For the public website feed console, expose the feed server behind HTTPS and set:
 

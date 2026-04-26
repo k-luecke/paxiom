@@ -18,6 +18,14 @@ const {
   findByCommitment,
   latestFeedItems
 } = require('../feed/store');
+const {
+  authenticateToken,
+  filterItemsForSubscriber,
+  hashToken,
+  itemAllowedForSubscriber,
+  parseSubscribers
+} = require('../feed/auth');
+const { getPredicate, listPredicates } = require('../feed/predicates');
 const { mkdtempSync, rmSync } = require('fs');
 const { join } = require('path');
 const { tmpdir } = require('os');
@@ -249,6 +257,45 @@ async function testFeedStore() {
   }
 }
 
+async function testFeedAuthScopes() {
+  const subscribers = parseSubscribers({
+    PAXIOM_FEED_SUBSCRIBERS: JSON.stringify([
+      { id: 'slot0-only', token_hash: hashToken('slot0-token'), scopes: ['uniswap_v3_slot0'] },
+      { id: 'all-access', token_hash: hashToken('all-token'), scopes: ['*'] }
+    ])
+  });
+
+  const slot0 = {
+    feed_id: 'ethereum.uniswap_v3_slot0',
+    predicate: 'uniswap_v3_slot0',
+    subject: 'ethereum:pool:slot0'
+  };
+  const storage = {
+    feed_id: 'ethereum.storage_equals',
+    predicate: 'storage_equals',
+    subject: 'ethereum:contract:slot1'
+  };
+
+  const scoped = authenticateToken('slot0-token', subscribers);
+  const all = authenticateToken('all-token', subscribers);
+
+  assert.strictEqual(scoped.id, 'slot0-only');
+  assert.strictEqual(all.id, 'all-access');
+  assert.strictEqual(authenticateToken('wrong-token', subscribers), null);
+  assert.strictEqual(itemAllowedForSubscriber(slot0, scoped), true);
+  assert.strictEqual(itemAllowedForSubscriber(storage, scoped), false);
+  assert.strictEqual(filterItemsForSubscriber([slot0, storage], scoped).length, 1);
+  assert.strictEqual(filterItemsForSubscriber([slot0, storage], all).length, 2);
+}
+
+async function testPredicateCatalog() {
+  const live = listPredicates({ includePlanned: false });
+  assert.ok(live.some(predicate => predicate.id === 'storage_equals'));
+  assert.ok(live.some(predicate => predicate.id === 'uniswap_v3_slot0'));
+  assert.strictEqual(getPredicate('uniswap_v3_slot0').status, 'live');
+  assert.strictEqual(getPredicate('missing'), null);
+}
+
 (async () => {
   await testCoreReplay();
   await testReducerRejectsReplay();
@@ -258,6 +305,8 @@ async function testFeedStore() {
   await testFactProofBindsToCorpus();
   await testUniswapV3Slot0Decode();
   await testFeedStore();
+  await testFeedAuthScopes();
+  await testPredicateCatalog();
   console.log('All tests passed');
 })().catch(err => {
   console.error(err);
