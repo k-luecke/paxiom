@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "feed:server": "node feed/server.mjs",
+    "proof:init-ao": "node sdk/init-proof-corpus.mjs",
     "proof:demo": "node sdk/proof-corpus-demo.cjs",
     "proof:live": "node sdk/live-eth-prover.mjs",
     "proof:storage": "node sdk/prove-eth-storage.cjs",
+    "proof:uniswap-v3-slot0": "node sdk/prove-uniswap-v3-slot0.cjs",
     "test": "node test/core.test.cjs"
   },
   "keywords": [],

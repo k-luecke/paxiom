@@ -6,6 +6,8 @@ const require = createRequire(import.meta.url);
 const { createSegmentProof, hashCommitment } = require("../core/proof-corpus");
 const { normalizeHex } = require("../core/eth-proof");
 const { proveStorage } = require("./prove-eth-storage.cjs");
+const { proveUniswapV3Slot0 } = require("./prove-uniswap-v3-slot0.cjs");
+const { appendFeedItem, createFeedItem } = require("../feed/store");
 
 const DEFAULT_RPC_URL = "https://ethereum-rpc.publicnode.com";
 const RPC_URL = process.env.ETH_RPC_URL || DEFAULT_RPC_URL;
@@ -15,6 +17,8 @@ const POLL_MS = Number(process.env.PAXIOM_LIVE_POLL_MS || 12_000);
 const BLOCK_TAG = process.env.PAXIOM_LIVE_BLOCK_TAG || "finalized";
 const WATCH_ADDRESS = process.env.PAXIOM_WATCH_ADDRESS || "";
 const WATCH_SLOT = process.env.PAXIOM_WATCH_SLOT || "0x0";
+const WATCH_KIND = process.env.PAXIOM_WATCH_KIND || "storage";
+const WRITE_FEED = process.env.PAXIOM_WRITE_FEED !== "false";
 const RUN_ONCE = process.argv.includes("--once");
 
 let signer = null;
@@ -111,12 +115,37 @@ async function submitSegment(segment) {
 
 async function submitStorageFact(block, corpusCommitment) {
   if (!WATCH_ADDRESS) return null;
-  const { fact } = await proveStorage({
-    rpcUrl: RPC_URL,
-    address: WATCH_ADDRESS,
-    slot: WATCH_SLOT,
-    blockTag: block.number,
-    corpusCommitment
+  const prover = WATCH_KIND === "uniswap-v3-slot0"
+    ? proveUniswapV3Slot0({
+        rpcUrl: RPC_URL,
+        pool: WATCH_ADDRESS,
+        blockTag: block.number,
+        corpusCommitment,
+        token0Decimals: Number(process.env.PAXIOM_TOKEN0_DECIMALS || 18),
+        token1Decimals: Number(process.env.PAXIOM_TOKEN1_DECIMALS || 18)
+      })
+    : proveStorage({
+        rpcUrl: RPC_URL,
+        address: WATCH_ADDRESS,
+        slot: WATCH_SLOT,
+        blockTag: block.number,
+        corpusCommitment
+      });
+  const { fact } = await prover;
+  const feedItem = createFeedItem({
+    feed_id: `ethereum.${fact.predicate}`,
+    chain: "ethereum",
+    predicate: fact.predicate,
+    subject: fact.subject,
+    value: fact.value,
+    block_number: fact.slot,
+    block_hash: normalizeHex(block.hash),
+    state_root: fact.state_root,
+    proof_system: fact.proof_system,
+    proof_hash: fact.proof_hash,
+    paxiom_commitment: fact.commitment,
+    corpus_commitment: fact.corpus_commitment,
+    verification_level: PROCESS_ID ? "ao_committed" : "mpt_verified"
   });
 
   await sendAO("SubmitFactProof", {
@@ -124,12 +153,13 @@ async function submitStorageFact(block, corpusCommitment) {
     state_root: fact.state_root,
     predicate: fact.predicate,
     subject: fact.subject,
-    value: fact.value,
+    value: typeof fact.value === "string" ? fact.value : JSON.stringify(fact.value),
     corpus_commitment: fact.corpus_commitment,
     proof_hash: fact.proof_hash,
     commitment: fact.commitment
   });
-  return fact;
+  if (WRITE_FEED) appendFeedItem(feedItem);
+  return { fact, feedItem };
 }
 
 async function tick() {
@@ -156,9 +186,10 @@ async function tick() {
   }
 
   let fact = null;
+  let feedItem = null;
   if (WATCH_ADDRESS) {
     const corpusCommitment = aoState?.latest?.commitment || segment.commitment;
-    fact = await submitStorageFact(current, corpusCommitment);
+    ({ fact, feedItem } = await submitStorageFact(current, corpusCommitment));
   }
 
   console.log(JSON.stringify({
@@ -167,7 +198,9 @@ async function tick() {
     stateRoot: segment.to_state_root,
     segmentCommitment: segment.commitment,
     aoProcess: PROCESS_ID || null,
-    storageFactCommitment: fact?.commitment || null
+    factPredicate: fact?.predicate || null,
+    storageFactCommitment: fact?.commitment || null,
+    feedItemHash: feedItem?.feed_item_hash || null
   }));
 }
 
@@ -175,7 +208,8 @@ console.log("Paxiom live Ethereum prover running");
 console.log(`RPC: ${RPC_URL}`);
 console.log(`Block tag: ${BLOCK_TAG}`);
 console.log(`AO corpus process: ${PROCESS_ID || "disabled"}`);
-console.log(`Storage watch: ${WATCH_ADDRESS ? `${WATCH_ADDRESS}:${WATCH_SLOT}` : "disabled"}`);
+console.log(`Storage watch: ${WATCH_ADDRESS ? `${WATCH_KIND}:${WATCH_ADDRESS}:${WATCH_SLOT}` : "disabled"}`);
+console.log(`Feed write: ${WRITE_FEED ? "enabled" : "disabled"}`);
 console.log("");
 
 if (RUN_ONCE) {

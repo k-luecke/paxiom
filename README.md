@@ -188,6 +188,8 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - Mainnet OApp deployment
 - Proof corpus spine for genesis-to-present aggregation and fact proofs
 - Real EIP-1186 Ethereum storage proof verification and live finalized-block proving loop
+- Uniswap V3 `slot0` fact proofs for canonical pool price/tick state
+- Subscriber feed records with verification levels, no-custody labeling, and optional signatures
 
 ### Roadmap
 
@@ -197,6 +199,8 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - On-chain Solidity verifier contract
 - Recursive proof corpus with queryable Ethereum fact commitments
 - EIP-1186 fact proof adapters for account and storage predicates
+- Arbitrage-native predicates beginning with Uniswap V3 pool state
+- Subscriber API for latest facts, subject heads, and commitment lookup
 
 **Phase 2 — PaxiomPool**
 - Unified cross-chain liquidity pool

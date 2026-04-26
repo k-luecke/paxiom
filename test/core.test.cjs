@@ -11,6 +11,16 @@ const {
   createProofCorpus,
   createSegmentProof
 } = require('../core/proof-corpus');
+const { decodeSlot0 } = require('../core/uniswap-v3');
+const {
+  appendFeedItem,
+  createFeedItem,
+  findByCommitment,
+  latestFeedItems
+} = require('../feed/store');
+const { mkdtempSync, rmSync } = require('fs');
+const { join } = require('path');
+const { tmpdir } = require('os');
 
 async function testCoreReplay() {
   let log = createActionLog();
@@ -181,6 +191,64 @@ async function testFactProofBindsToCorpus() {
   assert.throws(() => attachFactProof(corpus, staleFact), /latest aggregate commitment/);
 }
 
+async function testUniswapV3Slot0Decode() {
+  const sqrtPriceX96 = 123456789n;
+  const tick = -42n;
+  const observationIndex = 7n;
+  const observationCardinality = 8n;
+  const observationCardinalityNext = 9n;
+  const feeProtocol = 3n;
+  const unlocked = 1n;
+  const tickTwosComplement = (1n << 24n) + tick;
+  const packed =
+    sqrtPriceX96 |
+    (tickTwosComplement << 160n) |
+    (observationIndex << 184n) |
+    (observationCardinality << 200n) |
+    (observationCardinalityNext << 216n) |
+    (feeProtocol << 232n) |
+    (unlocked << 240n);
+
+  const decoded = decodeSlot0(`0x${packed.toString(16)}`);
+  assert.strictEqual(decoded.sqrtPriceX96, sqrtPriceX96.toString());
+  assert.strictEqual(decoded.tick, tick.toString());
+  assert.strictEqual(decoded.observationIndex, observationIndex.toString());
+  assert.strictEqual(decoded.observationCardinality, observationCardinality.toString());
+  assert.strictEqual(decoded.observationCardinalityNext, observationCardinalityNext.toString());
+  assert.strictEqual(decoded.feeProtocol, feeProtocol.toString());
+  assert.strictEqual(decoded.unlocked, true);
+}
+
+async function testFeedStore() {
+  const dir = mkdtempSync(join(tmpdir(), 'paxiom-feed-'));
+  const file = join(dir, 'feed.jsonl');
+  try {
+    const item = createFeedItem({
+      feed_id: 'ethereum.uniswap_v3_slot0',
+      predicate: 'uniswap_v3_slot0',
+      subject: 'ethereum:pool:slot0',
+      value: { tick: '1' },
+      block_number: 10,
+      block_hash: root(4),
+      state_root: root(5),
+      proof_system: 'eip1186-mpt+uniswap-v3-slot0',
+      proof_hash: 'proof-hash',
+      paxiom_commitment: 'fact-commitment',
+      verification_level: 'mpt_verified'
+    }, { signingKey: 'test-key' });
+
+    appendFeedItem(item, file);
+    assert.strictEqual(item.custody, 'none');
+    assert.strictEqual(item.signature.length, 64);
+    assert.strictEqual(latestFeedItems({ limit: 1, file }).length, 1);
+
+    const found = findByCommitment('fact-commitment', file);
+    assert.strictEqual(found.paxiom_commitment, 'fact-commitment');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 (async () => {
   await testCoreReplay();
   await testReducerRejectsReplay();
@@ -188,6 +256,8 @@ async function testFactProofBindsToCorpus() {
   await testProofCorpusAggregation();
   await testProofCorpusRejectsGaps();
   await testFactProofBindsToCorpus();
+  await testUniswapV3Slot0Decode();
+  await testFeedStore();
   console.log('All tests passed');
 })().catch(err => {
   console.error(err);

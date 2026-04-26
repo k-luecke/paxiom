@@ -86,6 +86,35 @@ predicate    = "storage_equals"
 
 This is a real state proof, not a ZK proof. It proves a storage value opens under a known Ethereum state root. The remaining trust question is how that state root became known canonical Ethereum history; that is what the genesis-to-present recursive corpus is designed to remove.
 
+## Uniswap V3 Slot0 Proof
+
+```bash
+npm run proof:uniswap-v3-slot0 -- \
+  --pool=0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 \
+  --token0-decimals=6 \
+  --token1-decimals=18 \
+  --block=finalized
+```
+
+This verifies pool storage slot `0x0` against Ethereum state and decodes the packed Uniswap V3 `slot0` struct:
+
+- `sqrtPriceX96`
+- `tick`
+- `observationIndex`
+- `observationCardinality`
+- `observationCardinalityNext`
+- `feeProtocol`
+- `unlocked`
+
+The resulting fact uses:
+
+```text
+proof_system = "eip1186-mpt+uniswap-v3-slot0"
+predicate    = "uniswap_v3_slot0"
+```
+
+This is the first arbitrage-native predicate: it turns a pool's canonical price/tick state into a portable Paxiom commitment.
+
 ## Live Ethereum Prover
 
 ```bash
@@ -105,3 +134,56 @@ Useful environment variables:
 - `PAXIOM_WATCH_SLOT`
 
 Header-continuity receipts are an operator scaffold for live proving. They validate parent linkage and commit to block roots, but they are not a substitute for execution-layer state transition proofs or consensus proofs.
+
+To continuously prove Uniswap V3 `slot0` for a watched pool:
+
+```bash
+PAXIOM_WATCH_KIND=uniswap-v3-slot0 \
+PAXIOM_WATCH_ADDRESS=0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 \
+PAXIOM_TOKEN0_DECIMALS=6 \
+PAXIOM_TOKEN1_DECIMALS=18 \
+npm run proof:live
+```
+
+## AO Initialization
+
+```bash
+PAXIOM_PROOF_CORPUS_PROCESS=<ao-process-id> npm run proof:init-ao
+```
+
+This sends the Ethereum genesis anchor to `ao-processes/proof-corpus.lua`. After initialization, `npm run proof:live` can submit segment receipts and watched fact proofs when `PAXIOM_PROOF_CORPUS_PROCESS` is set.
+
+## Subscriber Feed
+
+The live prover writes subscriber records to `data/feed-items.jsonl` by default. Each item is labeled with:
+
+- `verification_level`
+- `custody = "none"`
+- `proof_system`
+- `proof_hash`
+- `paxiom_commitment`
+- `feed_item_hash`
+- optional HMAC `signature` when `PAXIOM_FEED_SIGNING_KEY` is set
+
+Run the local API:
+
+```bash
+npm run feed:server
+```
+
+Endpoints:
+
+```text
+GET /health
+GET /v1/feed/latest
+GET /v1/feed/subjects
+GET /v1/feed/commitment/:commitment
+```
+
+Set `PAXIOM_FEED_TOKEN` to require an `x-paxiom-feed-token` header.
+
+For the public website feed console, expose the feed server behind HTTPS and set:
+
+```bash
+PAXIOM_FEED_ALLOWED_ORIGIN=https://paxiom.org
+```

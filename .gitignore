@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 coverage/
+data/
 
 # nested repos for now
 contracts/.git
