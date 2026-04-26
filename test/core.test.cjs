@@ -26,6 +26,13 @@ const {
   parseSubscribers
 } = require('../feed/auth');
 const { getPredicate, listPredicates } = require('../feed/predicates');
+const {
+  assignJobToWorker,
+  createAoDispatch,
+  createRecursiveAggregationPlan,
+  createZkPredicateJob,
+  createZkProofReceipt
+} = require('../core/zk-pipeline');
 const { mkdtempSync, rmSync } = require('fs');
 const { join } = require('path');
 const { tmpdir } = require('os');
@@ -300,6 +307,35 @@ async function testPredicateCatalog() {
   assert.strictEqual(getPredicate('missing'), null);
 }
 
+async function testZkPipelinePlansParallelJobs() {
+  const job = createZkPredicateJob({
+    predicate: 'uniswap_v3_slot0',
+    subject: 'ethereum:0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640:slot0',
+    block_number: 24962138,
+    state_root: root(9),
+    public_inputs: { pool: '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640' },
+    target_proof_system: 'groth16-mpt-slot0-v1'
+  });
+
+  const assignment = assignJobToWorker(job, 8);
+  const dispatch = createAoDispatch(job, 8);
+  const receipt = createZkProofReceipt({
+    job,
+    proof_system: 'groth16-mpt-slot0-v1',
+    proof_hash: 'proof:slot0:24962138',
+    verifier_id: 'slot0-verifier-v1',
+    public_outputs: { tick: '198871' }
+  });
+  const plan = createRecursiveAggregationPlan([receipt]);
+
+  assert.strictEqual(job.kind, 'ZK_PREDICATE_JOB');
+  assert.strictEqual(job.subject, 'ethereum:0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640:slot0');
+  assert.ok(assignment.worker_id.startsWith('ao-zk-worker-'));
+  assert.strictEqual(dispatch.tags.find(tag => tag.name === 'Action').value, 'ProveZkPredicate');
+  assert.strictEqual(receipt.job_id, job.job_id);
+  assert.strictEqual(plan.receipt_commitments[0], receipt.commitment);
+}
+
 (async () => {
   await testCoreReplay();
   await testReducerRejectsReplay();
@@ -311,6 +347,7 @@ async function testPredicateCatalog() {
   await testFeedStore();
   await testFeedAuthScopes();
   await testPredicateCatalog();
+  await testZkPipelinePlansParallelJobs();
   console.log('All tests passed');
 })().catch(err => {
   console.error(err);

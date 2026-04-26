@@ -190,6 +190,7 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - Real EIP-1186 Ethereum storage proof verification and live finalized-block proving loop
 - Uniswap V3 `slot0` fact proofs for canonical pool price/tick state
 - Subscriber feed records with verification levels, no-custody labeling, and optional signatures
+- ZK predicate job model for AO-parallel live proving lanes
 
 ### Roadmap
 
@@ -201,6 +202,9 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - EIP-1186 fact proof adapters for account and storage predicates
 - Arbitrage-native predicates beginning with Uniswap V3 pool state
 - Subscriber API for latest facts, subject heads, and commitment lookup
+- Live ZK predicate proof receipts for Ethereum state facts
+- AO worker dispatch for parallel predicate proving
+- Recursive aggregation plans for compact proof roots
 
 **Phase 2 — PaxiomPool**
 - Unified cross-chain liquidity pool
@@ -211,6 +215,14 @@ The verification layer is chain-agnostic and can be composed with identity verif
 - Complete elimination of trusted intermediaries
 - Shared sequencer integration when available
 - Institutional settlement layer
+
+**Stage Four — Default Ethereum Predicate Proof Layer**
+- Live ZK proofs for capital-relevant Ethereum predicates
+- AO-parallel proving jobs split by predicate, subject, and block/window
+- Recursive aggregation of predicate proofs into subscriber-verifiable roots
+- Public commitments with subscriber-gated low-latency proof feeds
+
+See [docs/stage-four-roadmap.md](docs/stage-four-roadmap.md) for the operational path.
 
 ---
 
