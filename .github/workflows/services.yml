@@ -1,0 +1,40 @@
+name: services
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install paxiom dependencies
+        run: npm ci || npm install
+
+      - name: Verify wasm checksum integrity
+        run: |
+          cd hyperbeam/devices/bls-sync-committee
+          if [[ -f bls_verifier.wasm ]]; then
+            expected=$(awk '{print $1}' bls_verifier.wasm.sha256)
+            actual=$(sha256sum bls_verifier.wasm | awk '{print $1}')
+            if [[ "$expected" != "$actual" ]]; then
+              echo "::error::wasm checksum drift — refresh per UPDATE.md"
+              exit 1
+            fi
+          else
+            echo "wasm not vendored yet — refresh after first bls-verifier release"
+          fi
+
+      - name: Sync committee service tests (mock dispatch)
+        run: npm run test:sync-committee
+
+      - name: Load network reconstruction tests (fixture)
+        run: npm run test:load-network

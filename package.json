@@ -4,7 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run test:sync-committee && npm run test:load-network",
+    "test:sync-committee": "node --test services/sync-committee/test/server.test.mjs",
+    "test:load-network": "node --test load-network/test/reconstruct.test.mjs load-network/test/live.test.mjs",
+    "hyperbeam:install": "./hyperbeam/bringup/install.sh",
+    "hyperbeam:shell": "./hyperbeam/bringup/shell.sh",
+    "hyperbeam:smoke": "./hyperbeam/bringup/smoke-test.sh",
+    "service:sync-committee": "node services/sync-committee/server.mjs"
   },
   "keywords": [],
   "author": "",

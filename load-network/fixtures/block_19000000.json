@@ -1,0 +1,9 @@
+{
+  "block_number": 19000000,
+  "block_hash": "0xcc25e51f8c1adcc26ec1eb6d4dd0e36c9d6a7a26ebbe2f5b0e60a4a71c1f1aac",
+  "state_root": "0x3a9ad2f0a58f7d5f3a6c97ce1f1f5aebf8a2c3a7e8b1d2c4e6f8a0b2c4e6f8a0",
+  "archive_root": "0xb1f4e0a2c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f80a1b2c3d4e5f6071",
+  "timestamp": 1704067200,
+  "captured_at": "fixture/v1/2026-05-02",
+  "fixture_note": "Synthesised stand-in for a real load.network archive bundle. Replace with a live capture via fixtures/record.mjs once API access is provisioned. Block 19000000 chosen as a frozen historical anchor (Ethereum mainnet, ~Jan 2024)."
+}

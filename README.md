@@ -1,5 +1,11 @@
 # Paxiom — Trustless Cross-Chain Verification Infrastructure
 
+> **Phase 0 substrate:** the HyperBEAM bring-up, the sync-committee
+> HyperBEAM device, and the Load Network state-reconstruction client are
+> scaffolded under [`hyperbeam/`](hyperbeam/), [`services/sync-committee/`](services/sync-committee/),
+> and [`load-network/`](load-network/). See [`docs/phase-0-gates.md`](docs/phase-0-gates.md)
+> for explicit acceptance criteria and operator commands.
+
 ## Executive Summary
 
 Paxiom is a cross-chain infrastructure protocol that enables trustless verification of blockchain state across multiple Layer 2 networks. The system combines zero-knowledge cryptography, permanent decentralized storage, and autonomous compute processes to create verification infrastructure that requires no trusted intermediaries at any layer of the stack.

@@ -1,0 +1,8 @@
+{
+  "block_number": 19000000,
+  "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+  "balance": "0x0",
+  "nonce": "0x1",
+  "code_hash": "0xb44d950b2cf81c7c4e7b0e1c7bce3a3b1f3c5d7e9b1c3d5e7f9a1b3c5d7e9f12",
+  "storage_root": "0x9c81d4b8f8e9c87a26d61f3a98a4b54a1d4f5b71d3a9c8b7e6f5e4d3c2b1a039"
+}

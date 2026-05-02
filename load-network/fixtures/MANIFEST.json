@@ -1,0 +1,14 @@
+{
+  "block_number": 19000000,
+  "anchor_address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+  "anchor_slot": "0x0",
+  "captured_at": "fixture/v1/2026-05-02",
+  "captured_via": "load-network/fixtures/record.mjs",
+  "load_network_endpoint": "https://load.network",
+  "files": [
+    "block_19000000.json",
+    "account_19000000_weth.json",
+    "storage_19000000_weth_slot0.json"
+  ],
+  "note": "Synthesised stand-ins for a real Load Network archive bundle. Operator should refresh via record.mjs once Load Network API access is provisioned. Block 19000000 chosen as a frozen historical anchor on Ethereum mainnet."
+}
