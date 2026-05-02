@@ -1,0 +1,99 @@
+// Fixture-driven test for the sync-committee HTTP service.
+// Forces MOCK_DEVICE=1 so dispatch is deterministic; asserts the response
+// shape matches O-701 / S.02 and the validator catches bad input.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createApp } from '../server.mjs';
+
+process.env.MOCK_DEVICE = '1';
+
+function listenOnEphemeralPort(app) {
+  return new Promise((resolve) => {
+    const server = app.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      resolve({ server, url: `http://127.0.0.1:${port}` });
+    });
+  });
+}
+
+const wellFormedRequest = {
+  slot: '8421337',
+  block_root: '0x' + 'a'.repeat(64),
+  parent_root: '0x' + 'b'.repeat(64),
+  sync_aggregate: {
+    sync_committee_bits: '0x' + 'ff'.repeat(64),
+    sync_committee_signature: '0x' + 'c'.repeat(192),
+  },
+};
+
+test('healthz returns ok', async () => {
+  const { server, url } = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${url}/healthz`);
+    assert.equal(resp.status, 200);
+    const body = await resp.json();
+    assert.deepEqual(body, { ok: true, service: 'A-202' });
+  } finally {
+    server.close();
+  }
+});
+
+test('verify with mock dispatch returns S.02-shaped response', async () => {
+  const { server, url } = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${url}/v1/sync-committee/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wellFormedRequest),
+    });
+    assert.equal(resp.status, 200);
+    const body = await resp.json();
+
+    // Required fields per O-701 / S.02.
+    for (const field of [
+      'verified', 'service', 'slot', 'fork_version', 'domain', 'signing_root',
+      'participating', 'committee_size', 'primitive_return_code',
+      'platform_signature', 'ao_message_id',
+    ]) {
+      assert.ok(field in body, `missing field: ${field}`);
+    }
+    assert.equal(body.service, 'A-202');
+    assert.equal(body.slot, '8421337');
+    assert.match(body.fork_version, /^0x[0-9a-f]{8}$/);
+    assert.match(body.signing_root, /^0x[0-9a-f]{64}$/);
+    assert.equal(body.committee_size, 512);
+    assert.ok(resp.headers.get('x-payment-response-correlation'));
+  } finally {
+    server.close();
+  }
+});
+
+test('verify rejects malformed signature length', async () => {
+  const { server, url } = await listenOnEphemeralPort(createApp());
+  try {
+    const bad = JSON.parse(JSON.stringify(wellFormedRequest));
+    bad.sync_aggregate.sync_committee_signature = '0xdead';
+    const resp = await fetch(`${url}/v1/sync-committee/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bad),
+    });
+    assert.equal(resp.status, 400);
+    const body = await resp.json();
+    assert.equal(body.error, 'invalid request');
+  } finally {
+    server.close();
+  }
+});
+
+test('verify rejects non-POST methods', async () => {
+  const { server, url } = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${url}/v1/sync-committee/verify`);
+    assert.equal(resp.status, 405);
+    assert.equal(resp.headers.get('allow'), 'POST');
+  } finally {
+    server.close();
+  }
+});

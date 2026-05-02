@@ -16,3 +16,10 @@ rust/
 ui/node_modules/
 
 ui/node_modules
+
+# phase-0 substrate
+load-network/fixtures/.tmp/
+services/sync-committee/.cache/
+hyperbeam/devices/bls-sync-committee/bls_verifier.wasm
+hyperbeam/bringup/logs/
+hyperbeam/bringup/evidence/

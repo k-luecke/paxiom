@@ -1,10 +1,17 @@
 import { spawn } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
-const PAXIOM_PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
-const BEACON_URL = 'https://lodestar-mainnet.chainsafe.io';
-const VERIFIER_BIN = '/home/mk19/paxiom/rust/bls-verify-cli/target/release/bls-verify-cli';
-const PUBKEY_CACHE = '/home/mk19/paxiom/pubkey-cache.json';
+// Path constants are env-overridable so the legacy CLI path can run
+// alongside the new services/sync-committee/ HTTP service (which dispatches
+// via HyperBEAM rather than shelling out to the CLI).
+const PAXIOM_PROCESS_ID = process.env.PAXIOM_PROCESS_ID
+  || 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
+const BEACON_URL = process.env.BEACON_URL
+  || 'https://lodestar-mainnet.chainsafe.io';
+const VERIFIER_BIN = process.env.VERIFIER_BIN
+  || '/home/mk19/paxiom/rust/bls-verify-cli/target/release/bls-verify-cli';
+const PUBKEY_CACHE = process.env.PUBKEY_CACHE
+  || '/home/mk19/paxiom/pubkey-cache.json';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 async function fetchJSON(url) {
