@@ -1,0 +1,18 @@
+node_modules/
+*.log
+.env
+.env.*
+dist/
+build/
+coverage/
+
+# nested repos for now
+contracts/.git
+rust/bls-test/.git
+
+sdk/dedup-state.json
+contracts/
+rust/
+ui/node_modules/
+
+ui/node_modules

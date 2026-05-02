@@ -75,8 +75,14 @@ function decodeAccount(value) {
   };
 }
 
-async function verifyAccountProof(stateRoot, proof) {
+async function verifyAccountProof(stateRoot, proof, expectedAddress) {
   assert(proof && typeof proof === "object", "EIP-1186 proof object is required");
+  if (expectedAddress) {
+    assert(
+      normalizeHex(proof.address) === normalizeHex(expectedAddress),
+      `EIP-1186 proof address mismatch: expected ${normalizeHex(expectedAddress)}, got ${normalizeHex(proof.address)}`
+    );
+  }
   const trie = new Trie();
   const value = await trie.verifyProof(
     hexToBytesStrict(stateRoot),
@@ -111,9 +117,9 @@ async function verifyStorageProof(storageHash, item) {
   };
 }
 
-async function verifyEip1186Proof({ block, proof }) {
+async function verifyEip1186Proof({ block, proof, address }) {
   assert(block && block.stateRoot, "Block with stateRoot is required");
-  const account = await verifyAccountProof(block.stateRoot, proof);
+  const account = await verifyAccountProof(block.stateRoot, proof, address);
   const storage = [];
 
   for (const item of proof.storageProof || []) {

@@ -128,18 +128,51 @@ Runtime check:
 npm run zk:check:expander
 ```
 
-Current local blocker:
+Local smoke test:
+
+```sh
+npm run zk:smoke:expander
+```
+
+Current local status:
 
 ```text
-Expander executor build requires MPICH or OpenMPI.
-This WSL environment currently has cargo but no mpiexec/mpirun, and mpi-sys fails during build.
+Expander executor builds with the rootless OpenMPI/libclang setup in .paxiom-runtime/mpi.
+The bundled small M31 circuit proves and verifies successfully.
+The Paxiom GF2 adapter generates a valid Expander circuit/witness for real witness-derived
+Keccak-f transitions from .paxiom-runtime/expander-keccak-batch.json.
+```
+
+Adapter command:
+
+```sh
+npm run zk:adapt:expander-keccak
+```
+
+Proof command:
+
+```sh
+npm run zk:prove:expander-keccak
+```
+
+The adapter supports deterministic chunks:
+
+```sh
+node sdk/generate-expander-keccak-adapter.cjs --offset=0 --count=1 --out-dir=.paxiom-runtime/expander-keccak-adapter-smoke
+```
+
+Local blocker found on this WSL host:
+
+```text
+The 50-transition monolithic M31 circuit is too large for the local WSL memory envelope.
+The GF2 one-transition adapter circuit/witness validates, but Expander proof generation is blocked
+locally: Raw PCS hits an illegal instruction in the GF2 prover path, while Orion PCS fails due a
+missing/deserialization-failed GF2 SRS.
 ```
 
 Next steps:
 
-1. Install MPICH/OpenMPI or run the worker on a machine/container that already has MPI.
-2. Run Expander's small proof smoke test with `expander-exec`.
-3. Build the circuit/witness adapter that consumes `.paxiom-runtime/expander-keccak-batch.json`.
-4. Prove the 50-permutation Paxiom witness-derived batch.
-5. Benchmark `50`, `512`, and `1024` permutation batches.
-6. Decide whether Expander replaces Keccacheck as the primary Keccak backend.
+1. Run the GF2 adapter on an AVX-compatible Expander worker or provide the correct Orion GF2 SRS.
+2. Prove all 50 witness-derived transitions as chunks, then aggregate receipts.
+3. Benchmark `50`, `512`, and `1024` permutation batches on the worker target.
+4. Decide whether Expander replaces Keccacheck as the primary Keccak backend.

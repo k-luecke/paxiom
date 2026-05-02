@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MPIROOT="${PAXIOM_MPI_ROOT:-$ROOT/.paxiom-runtime/mpi}"
+
+export PKG_CONFIG_PATH="$MPIROOT/usr/lib/x86_64-linux-gnu/pkgconfig:$MPIROOT/usr/lib/x86_64-linux-gnu/mpich/lib/pkgconfig:$MPIROOT/usr/lib/x86_64-linux-gnu/pmix2/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PKG_CONFIG_SYSROOT_DIR="$MPIROOT"
+
+LIBDIR="$MPIROOT/usr/lib/x86_64-linux-gnu"
+PMIXDIR="$LIBDIR/pmix2/lib"
+MPICHDIR="$LIBDIR/mpich/lib"
+OMPIDIR="$LIBDIR/openmpi/lib"
+if pkg-config --exists ompi; then
+  MPI_PC=ompi
+else
+  MPI_PC=mpich
+fi
+
+exec gcc \
+  $(pkg-config --cflags "$MPI_PC") \
+  "$@" \
+  -L"$LIBDIR" -L"$PMIXDIR" -L"$MPICHDIR" -L"$OMPIDIR" \
+  -Wl,-rpath,"$LIBDIR" -Wl,-rpath,"$PMIXDIR" -Wl,-rpath,"$MPICHDIR" -Wl,-rpath,"$OMPIDIR" \
+  $(pkg-config --libs "$MPI_PC")

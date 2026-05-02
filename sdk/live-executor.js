@@ -6,10 +6,12 @@ import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
 import {
   EXECUTION_ENABLED,
   REQUIRE_GENESIS_PROOF,
+  assertExecutionStartupSafety,
   requireGenesisProof,
   normalizeOpportunity,
   requireExecutionEnabled,
-  requireSignalAuth
+  requireSignalAuth,
+  resolveExecutionNetwork
 } from './execution-policy.js';
 
 const LOG_FILE       = '/home/mk19/paxiom/opportunities.log';
@@ -20,8 +22,12 @@ const COOLDOWN_MS    = 60000;
 const HTTP_PORT      = 7070;
 
 // ─── chain config ────────────────────────────────────────────
-// Set MAINNET = true when wallet is funded and ready for live trading
-const MAINNET = false;
+const NETWORK = resolveExecutionNetwork();
+const MAINNET = NETWORK === 'mainnet';
+const startupSafety = assertExecutionStartupSafety({ network: NETWORK });
+console.log(`[BOOT] PAXIOM_NETWORK=${startupSafety.network}`);
+console.log(`[BOOT] PAXIOM_EXECUTION_ENABLED=${startupSafety.executionEnabled}`);
+console.log(`[BOOT] PAXIOM_REQUIRE_GENESIS_PROOF=${startupSafety.requireGenesisProof}`);
 
 const CHAIN_CONFIG = MAINNET ? {
   // Mainnet addresses

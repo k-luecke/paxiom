@@ -69,7 +69,8 @@ const {
   proveEthereumInclusion
 } = require('../sdk/ethereum-inclusion-backend.cjs');
 const { backendFromEnv } = require('../sdk/prover-backend.cjs');
-const { mkdtempSync, rmSync } = require('fs');
+const { verifyAccountProof } = require('../core/eth-proof');
+const { appendFileSync, mkdtempSync, rmSync } = require('fs');
 const { join } = require('path');
 const { tmpdir } = require('os');
 
@@ -116,6 +117,23 @@ async function testReducerRejectsReplay() {
 async function testExecutionPolicy() {
   const policy = await import('../sdk/execution-policy.js');
 
+  assert.strictEqual(policy.resolveExecutionNetwork({ PAXIOM_NETWORK: 'testnet' }), 'testnet');
+  assert.strictEqual(policy.resolveExecutionNetwork({ PAXIOM_NETWORK: 'mainnet' }), 'mainnet');
+  assert.throws(() => policy.resolveExecutionNetwork({}), /PAXIOM_NETWORK/);
+  assert.throws(
+    () => policy.assertExecutionStartupSafety({
+      network: 'mainnet',
+      executionEnabled: true,
+      requireGenesisProof: false
+    }),
+    /Refusing mainnet execution/
+  );
+  assert.doesNotThrow(() => policy.assertExecutionStartupSafety({
+    network: 'testnet',
+    executionEnabled: true,
+    requireGenesisProof: false
+  }));
+
   const valid = policy.normalizeOpportunity({
     timestamp: new Date().toISOString(),
     asset: 'ETH',
@@ -148,6 +166,20 @@ async function testExecutionPolicy() {
   }));
 
   assert.throws(() => policy.requireExecutionEnabled(), /Execution disabled/);
+}
+
+async function testEthProofRejectsAddressMismatch() {
+  await assert.rejects(
+    () => verifyAccountProof(root(1), {
+      address: '0x0000000000000000000000000000000000000001',
+      accountProof: [],
+      nonce: '0x0',
+      balance: '0x0',
+      storageHash: root(2),
+      codeHash: root(3)
+    }, '0x0000000000000000000000000000000000000002'),
+    /proof address mismatch/
+  );
 }
 
 function root(n) {
@@ -312,6 +344,8 @@ async function testFeedStore() {
     assert.strictEqual(item.mpt_proof_hash, 'mpt-proof-hash');
     assert.strictEqual(item.signature.length, 64);
     assert.strictEqual(latestFeedItems({ limit: 1, file }).length, 1);
+    appendFileSync(file, '{"partial":');
+    assert.strictEqual(latestFeedItems({ limit: 5, file }).length, 1);
 
     const found = findByCommitment('fact-commitment', file);
     assert.strictEqual(found.paxiom_commitment, 'fact-commitment');
@@ -599,6 +633,7 @@ async function testExpanderKeccakBatchFromWitness() {
   await testCoreReplay();
   await testReducerRejectsReplay();
   await testExecutionPolicy();
+  await testEthProofRejectsAddressMismatch();
   await testProofCorpusAggregation();
   await testProofCorpusRejectsGaps();
   await testFactProofBindsToCorpus();

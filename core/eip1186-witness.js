@@ -148,7 +148,7 @@ async function createEthereumInclusionWitness({ block, proof, slot }) {
   assert(proof && proof.address && Array.isArray(proof.accountProof), "EIP-1186 proof object is required");
 
   const storageItem = selectStorageProof(proof, slot);
-  const verified = await verifyEip1186Proof({ block, proof });
+  const verified = await verifyEip1186Proof({ block, proof, address: proof.address });
   const accountProofNodes = proof.accountProof.map(summarizeProofNode);
   const storageProofNodes = storageItem.proof.map(summarizeProofNode);
   const accountTrieKeyHex = hexFromBytes(accountTrieKey(proof.address));

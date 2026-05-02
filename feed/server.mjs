@@ -17,6 +17,7 @@ const BIND = process.env.PAXIOM_FEED_BIND || "127.0.0.1";
 const ALLOWED_ORIGIN = process.env.PAXIOM_FEED_ALLOWED_ORIGIN || "https://paxiom.org";
 const PUBLIC_READ = process.env.PAXIOM_FEED_PUBLIC_READ === "true";
 const RATE_LIMIT_PER_MIN = Number(process.env.PAXIOM_FEED_RATE_LIMIT_PER_MIN || 120);
+const TRUST_PROXY = process.env.PAXIOM_FEED_TRUST_PROXY === "true";
 const subscribers = parseSubscribers();
 const rateBuckets = new Map();
 
@@ -40,13 +41,22 @@ function subscriberFromRequest(req) {
 }
 
 function rateLimitKey(req, subscriber) {
-  return subscriber?.id || req.socket.remoteAddress || "unknown";
+  if (subscriber?.id && subscriber.id !== "public") return subscriber.id;
+  if (TRUST_PROXY && typeof req.headers["x-forwarded-for"] === "string") {
+    return req.headers["x-forwarded-for"].split(",")[0].trim() || "unknown";
+  }
+  return req.socket.remoteAddress || "unknown";
 }
 
 function checkRateLimit(req, subscriber) {
   const key = rateLimitKey(req, subscriber);
   const now = Date.now();
   const windowStart = now - 60_000;
+  for (const [bucketKey, timestamps] of rateBuckets.entries()) {
+    const active = timestamps.filter(ts => ts > windowStart);
+    if (active.length === 0) rateBuckets.delete(bucketKey);
+    else if (active.length !== timestamps.length) rateBuckets.set(bucketKey, active);
+  }
   const bucket = (rateBuckets.get(key) || []).filter(ts => ts > windowStart);
   if (bucket.length >= RATE_LIMIT_PER_MIN) {
     rateBuckets.set(key, bucket);
@@ -77,6 +87,8 @@ const server = createServer((req, res) => {
       service: "paxiom-feed",
       auth_required: !PUBLIC_READ,
       subscriber_count: subscribers.length,
+      rate_limit_per_min: RATE_LIMIT_PER_MIN,
+      trust_proxy: TRUST_PROXY,
       verification_levels: ["rpc_observed", "mpt_verified", "ao_committed", "recursive_verified", "zk_verified"]
     });
     return;
@@ -156,5 +168,6 @@ const server = createServer((req, res) => {
 server.listen(PORT, BIND, () => {
   console.log(`Paxiom feed server running on http://${BIND}:${PORT}`);
   console.log(`Feed auth required: ${PUBLIC_READ ? "no" : "yes"}`);
+  console.log(`Feed trust proxy: ${TRUST_PROXY ? "yes" : "no"}`);
   console.log(`Configured subscribers: ${subscribers.length}`);
 });

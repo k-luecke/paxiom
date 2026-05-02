@@ -21,7 +21,10 @@
     "zk:prove:inclusion": "node sdk/ethereum-inclusion-backend.cjs",
     "zk:plan:keccacheck": "node sdk/plan-keccacheck-batch.cjs",
     "zk:batch:expander-keccak": "node sdk/build-expander-keccak-batch.cjs",
+    "zk:adapt:expander-keccak": "node sdk/generate-expander-keccak-adapter.cjs",
+    "zk:prove:expander-keccak": "bash sdk/prove-expander-keccak-batch.sh",
     "zk:check:expander": "node sdk/check-expander-runtime.cjs",
+    "zk:smoke:expander": "bash sdk/smoke-expander.sh",
     "zk:goldilocks:keccak": "node sdk/goldilocks-keccak-experiment.cjs",
     "zk:bench:slot0": "node sdk/benchmark-zk-slot0.cjs",
     "test": "node test/core.test.cjs"

@@ -130,7 +130,7 @@ async function runExperiment(options = {}) {
   );
 
   const fullMpt = await timedAsync("full EIP-1186 MPT verification", () =>
-    verifyEip1186Proof({ block: fetchBlock.value, proof: fetchProof.value })
+    verifyEip1186Proof({ block: fetchBlock.value, proof: fetchProof.value, address })
   );
 
   const report = {

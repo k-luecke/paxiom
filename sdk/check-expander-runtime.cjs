@@ -4,6 +4,7 @@ const { spawnSync } = require("child_process");
 
 const repoRoot = resolve(__dirname, "..");
 const expanderRoot = join(repoRoot, ".paxiom-runtime", "upstream", "Expander");
+const mpiRoot = join(repoRoot, ".paxiom-runtime", "mpi");
 
 function commandExists(command) {
   const result = spawnSync("bash", ["-lc", `command -v ${command}`], { encoding: "utf8" });
@@ -12,13 +13,21 @@ function commandExists(command) {
 
 function checkExpanderRuntime() {
   const cargo = commandExists("cargo");
-  const mpiexec = commandExists("mpiexec") || commandExists("mpirun");
+  const systemMpiexec = commandExists("mpiexec") || commandExists("mpirun");
+  const localMpiexec = existsSync(join(mpiRoot, "usr", "bin", "mpiexec")) ||
+    existsSync(join(mpiRoot, "usr", "bin", "mpiexec.mpich"))
+    ? join(mpiRoot, "usr", "bin", existsSync(join(mpiRoot, "usr", "bin", "mpiexec")) ? "mpiexec" : "mpiexec.mpich")
+    : null;
+  const mpiexec = systemMpiexec || localMpiexec;
   const expanderPresent = existsSync(expanderRoot);
+  const localMpiPresent = existsSync(join(mpiRoot, "usr", "lib", "x86_64-linux-gnu", "pkgconfig", "mpich.pc"));
   const status = {
     schema: "paxiom.expander_runtime_check.v1",
     generated_at: new Date().toISOString(),
     expander_root: expanderRoot,
     expander_present: expanderPresent,
+    local_mpi_root: mpiRoot,
+    local_mpi_present: localMpiPresent,
     cargo,
     mpiexec,
     can_build_expander_exec: Boolean(expanderPresent && cargo && mpiexec),
@@ -32,7 +41,10 @@ function checkExpanderRuntime() {
     status.notes.push("Rust cargo is required for Expander.");
   }
   if (!mpiexec) {
-    status.notes.push("MPICH or OpenMPI is required; local build currently fails in mpi-sys without it.");
+    status.notes.push("MPICH or OpenMPI is required. Try rootless extraction into .paxiom-runtime/mpi or install mpich system-wide.");
+  }
+  if (localMpiPresent) {
+    status.notes.push("Rootless MPI files are present. Source sdk/expander-mpi-env.sh before building Expander.");
   }
   if (expanderPresent) {
     status.notes.push("Public Expander repository is AGPL-3.0; integrate as an explicit external worker unless license strategy changes.");

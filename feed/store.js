@@ -1,9 +1,10 @@
 const crypto = require("crypto");
-const { existsSync, mkdirSync, readFileSync, appendFileSync } = require("fs");
+const { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } = require("fs");
 const { dirname, join } = require("path");
 const { canonicalStringify, hashState } = require("../core/hash");
 
 const DEFAULT_FEED_FILE = join(process.cwd(), "data", "feed-items.jsonl");
+const FSYNC_FEED_WRITES = process.env.PAXIOM_FEED_FSYNC === "true";
 
 function ensureParent(file) {
   const dir = dirname(file);
@@ -60,13 +61,26 @@ function createFeedItem(input, options = {}) {
 
 function appendFeedItem(item, file = process.env.PAXIOM_FEED_FILE || DEFAULT_FEED_FILE) {
   ensureParent(file);
-  appendFileSync(file, `${JSON.stringify(item)}\n`);
+  const line = `${JSON.stringify(item)}\n`;
+  if (FSYNC_FEED_WRITES) {
+    const fd = openSync(file, "a");
+    try {
+      writeSync(fd, line);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } else {
+    appendFileSync(file, line);
+  }
   return item;
 }
 
 function readFeedItems(file = process.env.PAXIOM_FEED_FILE || DEFAULT_FEED_FILE) {
   if (!existsSync(file)) return [];
-  return readFileSync(file, "utf8")
+  const content = readFileSync(file, "utf8");
+  const readable = content.endsWith("\n") ? content : content.slice(0, content.lastIndexOf("\n") + 1);
+  return readable
     .split("\n")
     .filter(Boolean)
     .map(line => JSON.parse(line));

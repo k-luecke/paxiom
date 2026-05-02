@@ -40,7 +40,7 @@ async function proveStorage(options = {}) {
   if (!block) throw new Error(`Block not found: ${blockTag}`);
 
   const proof = await rpc(rpcUrl, "eth_getProof", [address, [slot], block.number]);
-  const verified = await verifyEip1186Proof({ block, proof });
+  const verified = await verifyEip1186Proof({ block, proof, address });
   const storage = verified.storage[0];
 
   const fact = createFactProof({

@@ -50,7 +50,8 @@ npm run zk:batch:expander-keccak -- --witness=.paxiom-runtime/ethereum-inclusion
 ```
 
 It emits a Keccak-f transition batch for an external Expander worker. The current local runtime
-check shows that Expander is cloned and Rust is available, but MPICH/OpenMPI is missing.
+check shows that Expander is cloned and a rootless OpenMPI/libclang runtime is available.
+The bundled Expander small-circuit proof/verify smoke test passes.
 
 ## Backend Decision
 
@@ -245,8 +246,8 @@ Still to build:
 
 Recommended sequence:
 
-1. Install/provide an MPI-capable Expander worker runtime.
-2. Test Expander on a synthetic Keccak-f batch and one Paxiom witness-derived batch.
+1. Generate an Expander circuit/witness adapter for `.paxiom-runtime/expander-keccak-batch.json`.
+2. Test Expander on one Paxiom witness-derived Keccak-f batch.
 3. Decode one RLP node inside the backend.
 4. Prove one parent-child trie node hash/path check.
 5. Prove the storage path against `account.storageHash`.

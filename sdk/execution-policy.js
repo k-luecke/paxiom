@@ -2,10 +2,38 @@ const ALLOWED_CHAINS = new Set(['optimism', 'base', 'arbitrum']);
 const ALLOWED_ASSETS = new Set(['ETH', 'WETH', 'WBTC', 'wstETH', 'ARB', 'OP', 'USDT', 'cbETH']);
 const MAX_SIGNAL_AGE_MS = 2 * 60 * 1000;
 const MAX_SPREAD_PCT = 25;
+const ALLOWED_NETWORKS = new Set(['testnet', 'mainnet']);
 
 export const EXECUTION_ENABLED = process.env.PAXIOM_EXECUTION_ENABLED === 'true';
 export const SIGNAL_TOKEN = process.env.PAXIOM_SIGNAL_TOKEN || '';
 export const REQUIRE_GENESIS_PROOF = process.env.PAXIOM_REQUIRE_GENESIS_PROOF !== 'false';
+export const EXECUTION_NETWORK = process.env.PAXIOM_NETWORK || '';
+
+export function resolveExecutionNetwork(env = process.env) {
+  const network = String(env.PAXIOM_NETWORK || '').trim().toLowerCase();
+  if (!ALLOWED_NETWORKS.has(network)) {
+    throw new Error('PAXIOM_NETWORK must be set to "testnet" or "mainnet"');
+  }
+  return network;
+}
+
+export function assertExecutionStartupSafety({
+  network = resolveExecutionNetwork(),
+  executionEnabled = EXECUTION_ENABLED,
+  requireGenesisProof = REQUIRE_GENESIS_PROOF
+} = {}) {
+  if (network === 'mainnet' && executionEnabled !== true) {
+    throw new Error('Mainnet execution selected but disabled; set PAXIOM_EXECUTION_ENABLED=true only when ready to broadcast');
+  }
+  if (network === 'mainnet' && requireGenesisProof !== true) {
+    throw new Error('Refusing mainnet execution with PAXIOM_REQUIRE_GENESIS_PROOF=false');
+  }
+  return {
+    network,
+    executionEnabled,
+    requireGenesisProof
+  };
+}
 
 export function requireExecutionEnabled() {
   if (!EXECUTION_ENABLED) {
