@@ -4,5 +4,8 @@
   "balance": "0x0",
   "nonce": "0x1",
   "code_hash": "0xb44d950b2cf81c7c4e7b0e1c7bce3a3b1f3c5d7e9b1c3d5e7f9a1b3c5d7e9f12",
-  "storage_root": "0x9c81d4b8f8e9c87a26d61f3a98a4b54a1d4f5b71d3a9c8b7e6f5e4d3c2b1a039"
+  "storage_root": "0x266cfb6bf4138f0ccfe8f389194a7eff814ff0128a28da9ee2cbcd3e05d5da40",
+  "account_proof": [
+    "0xf86aa1208679e8eda65bd257638cf8cf09b8238888947cc3c0bea2aa2cc3f1c4ac7a3002b846f8440100a0266cfb6bf4138f0ccfe8f389194a7eff814ff0128a28da9ee2cbcd3e05d5da40a0b44d950b2cf81c7c4e7b0e1c7bce3a3b1f3c5d7e9b1c3d5e7f9a1b3c5d7e9f12"
+  ]
 }
