@@ -15,9 +15,15 @@ device is executable, message dispatch through `hb_ao` returns `{ok, _}`.
 **Operator proof:**
 
 ```bash
-./hyperbeam/bringup/install.sh         # one-shot
-./hyperbeam/bringup/smoke-test.sh       # exit 0 == gate closed
+./hyperbeam/bringup/run-with-log.sh ./hyperbeam/bringup/install.sh
+./hyperbeam/bringup/run-with-log.sh ./hyperbeam/bringup/smoke-test.sh
+# both wrappers tee stdout+stderr to hyperbeam/bringup/logs/<script>-<ts>.log
+# exit 0 from smoke-test == gate closed
 ```
+
+The `run-with-log.sh` wrapper preserves the wrapped script's exit code and
+records git rev + host + UTC timestamps at the start of each log. Logs are
+gitignored — they are operator-local evidence, not committed.
 
 Status: **operator-runnable** (Phase 0 scaffolding complete; live HyperBEAM
 bring-up is the operator's job — gate closes when smoke-test exits 0).
@@ -44,14 +50,15 @@ npm run test:sync-committee
 **Live proof (operator):**
 
 ```bash
-./hyperbeam/bringup/install.sh
-./hyperbeam/bringup/shell.sh                                  # in terminal A
-./hyperbeam/devices/bls-sync-committee/register.sh             # in terminal B
-node services/sync-committee/server.mjs                        # in terminal C
-curl -fsSL -X POST http://localhost:8080/v1/sync-committee/verify \
-    -H 'Content-Type: application/json' \
-    -d @<request-built-from-current-head.json>
-# expected: verified=true
+./hyperbeam/bringup/run-with-log.sh ./hyperbeam/bringup/install.sh
+./hyperbeam/bringup/shell.sh                                   # in terminal A
+./hyperbeam/devices/bls-sync-committee/register.sh              # in terminal B
+node services/sync-committee/server.mjs                         # in terminal C
+./hyperbeam/bringup/capture-gate-evidence.sh                    # in terminal D
+# writes hyperbeam/bringup/evidence/gate-s02-<ts>.json with the
+# slot, request hash, full response, and git rev. The JSON file is
+# the artifact CA.02 will eventually point at as the proof that this
+# pipeline verified real consensus data on a known date.
 ```
 
 Status: **scaffolded** (CI proof passes; live proof requires HyperBEAM up
