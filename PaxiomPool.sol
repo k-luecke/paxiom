@@ -20,6 +20,12 @@ contract PaxiomPool is OApp {
     uint256 public constant LP_SHARE               = 70;    // 70% of fee to LPs
     uint256 public constant LIQUIDATOR_BOUNTY_BPS  = 500;   // 5% of slashed collateral
     uint256 public constant TIMEOUT                = 5 minutes;
+    // audit H-09: borrower-exclusive window after expiry. liquidateExpired
+    // reverts unconditionally during (expiry, expiry + BORROWER_GRACE], so
+    // a repay/liquidate race at the expiry boundary cannot be miner-reordered
+    // against the borrower. 60s clears observed L2 reorg windows
+    // (Optimism ~30s, Base ~30s, Arbitrum ~16s) with ~2x headroom.
+    uint256 public constant BORROWER_GRACE         = 60;
     uint256 public constant BPS_DENOM              = 10000;
 
     uint8 constant MSG_LOAN_REQUEST = 1;
@@ -177,11 +183,19 @@ contract PaxiomPool is OApp {
         emit LoanIssued(loanId, msg.sender, loanAmount);
     }
 
+    /// @notice Repay an active loan and reclaim collateral.
+    /// @dev BORROWER GRACE (audit H-09): repay is allowed up to
+    ///      `expiry + BORROWER_GRACE`. During that window
+    ///      {liquidateExpired} reverts (gated by `block.timestamp >
+    ///      loan.expiry + BORROWER_GRACE`), and `repayLoan` is gated on
+    ///      `loan.borrower == msg.sender`, so the window is exclusively
+    ///      the borrower's. This eliminates the miner-orderable race at
+    ///      the original `expiry` boundary.
     function repayLoan(uint256 loanId) external {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(loan.borrower == msg.sender, "Not borrower");
-        require(block.timestamp <= loan.expiry, "Loan expired");
+        require(block.timestamp <= loan.expiry + BORROWER_GRACE, "Grace expired");
 
         uint256 totalOwed = loan.amount + loan.fee;
         require(IERC20(USDC).transferFrom(msg.sender, address(this), totalOwed), "Repay failed");
@@ -189,10 +203,14 @@ contract PaxiomPool is OApp {
         _settleLoan(loanId);
     }
 
+    /// @notice Liquidate a loan whose borrower failed to repay within
+    ///         `TIMEOUT + BORROWER_GRACE`.
+    /// @dev Gated past `expiry + BORROWER_GRACE` to give the borrower an
+    ///      exclusive repay window (audit H-09).
     function liquidateExpired(uint256 loanId) external {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
-        require(block.timestamp > loan.expiry, "Not expired");
+        require(block.timestamp > loan.expiry + BORROWER_GRACE, "In grace");
 
         loan.active = false;
 
