@@ -1,16 +1,21 @@
 {
-  "name": "sdk",
+  "name": "paxiom-sdk",
   "version": "1.0.0",
-  "description": "",
+  "description": "Paxiom SDK / hardened operator pipeline (price-feeder, ao-bridge, executor, signing daemon).",
+  "license": "MIT",
+  "author": "k-luecke",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/k-luecke/paxiom.git",
+    "directory": "sdk"
+  },
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["paxiom", "ao", "arbitrage"],
   "type": "module",
   "dependencies": {
-    "@permaweb/aoconnect": "^0.0.93"
+    "@permaweb/aoconnect": "0.0.93"
   }
 }
