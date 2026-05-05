@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_DESTINATION = '0x0000000000000000000000000000000000000000';
 const DEFAULT_NETWORK = 'base-sepolia';
@@ -55,6 +55,18 @@ export function decodeHeader(value) {
   }
 }
 
+let x402GateChecked = false;
+function assertX402Configured() {
+  if (x402GateChecked) return;
+  if (!process.env.X402_FACILITATOR_URL) {
+    throw new Error(
+      'x402 misconfiguration: REQUIRE_X402=1 but X402_FACILITATOR_URL is unset. ' +
+      'Refusing to serve paid endpoints without a real verifier (audit H-02, issue #13).',
+    );
+  }
+  x402GateChecked = true;
+}
+
 export async function requirePayment(req, res, cfg) {
   if (process.env.REQUIRE_X402 !== '1') {
     return {
@@ -62,6 +74,8 @@ export async function requirePayment(req, res, cfg) {
       payment: { mode: 'disabled', verified: true, settlementRequired: false },
     };
   }
+
+  assertX402Configured();
 
   const signature = paymentSignatureFrom(req);
   if (!signature) {
@@ -76,33 +90,14 @@ export async function requirePayment(req, res, cfg) {
     return { ok: false };
   }
 
-  if (process.env.X402_FACILITATOR_URL) {
-    const payment = await verifyWithFacilitator(signature, cfg);
-    if (!payment.verified) {
-      const required = createPaymentRequired(cfg);
-      res.writeHead(402, { 'PAYMENT-REQUIRED': encodeHeader(required) });
-      res.end(JSON.stringify({ error: 'payment verification failed', payment_required: required }));
-      return { ok: false };
-    }
-    return { ok: true, payment };
+  const payment = await verifyWithFacilitator(signature, cfg);
+  if (!payment.verified) {
+    const required = createPaymentRequired(cfg);
+    res.writeHead(402, { 'PAYMENT-REQUIRED': encodeHeader(required) });
+    res.end(JSON.stringify({ error: 'payment verification failed', payment_required: required }));
+    return { ok: false };
   }
-
-  const payload = decodeHeader(signature);
-  const requestHash = createHash('sha256')
-    .update(signature)
-    .update(cfg?.resource || req.url || '')
-    .digest('hex');
-
-  return {
-    ok: true,
-    payment: {
-      mode: 'local-header',
-      verified: true,
-      settlementRequired: false,
-      payload,
-      receiptId: `local-x402-${requestHash.slice(0, 16)}`,
-    },
-  };
+  return { ok: true, payment };
 }
 
 export function paymentResponseHeaders(payment, extra = {}) {
