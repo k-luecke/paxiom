@@ -29,6 +29,7 @@ contract PaxiomPool is OApp {
     address public immutable USDC;
     address public protocolTreasury;
     uint32  public peerEid;
+    bytes32 public trustedPeer;
 
     uint256 public totalLiquidity;
     uint256 public totalFees;
@@ -57,6 +58,7 @@ contract PaxiomPool is OApp {
     event LoanDefaulted(uint256 indexed loanId, uint256 collateralSlashed);
     event LiquidatorPaid(address indexed liquidator, uint256 indexed loanId, uint256 bounty);
     event ExecutionConfirmed(uint256 indexed loanId);
+    event TrustedPeerUpdated(uint32 indexed eid, bytes32 indexed peer);
 
     // ─── constructor ─────────────────────────────────────────────
     constructor(
@@ -193,12 +195,15 @@ contract PaxiomPool is OApp {
     // ─── LayerZero receive ────────────────────────────────────────
 
     function _lzReceive(
-        Origin calldata,
+        Origin calldata _origin,
         bytes32,
         bytes calldata _message,
         address,
         bytes calldata
     ) internal override {
+        require(_origin.srcEid == peerEid, "Untrusted srcEid");
+        require(trustedPeer != bytes32(0) && _origin.sender == trustedPeer, "Untrusted peer");
+
         (uint8 msgType, uint256 loanId) = abi.decode(_message, (uint8, uint256));
 
         if (msgType == MSG_EXEC_CONFIRM) {
@@ -244,5 +249,10 @@ contract PaxiomPool is OApp {
 
     function setPeerEid(uint32 _eid) external onlyOwner {
         peerEid = _eid;
+    }
+
+    function setTrustedPeer(bytes32 _peer) external onlyOwner {
+        trustedPeer = _peer;
+        emit TrustedPeerUpdated(peerEid, _peer);
     }
 }
