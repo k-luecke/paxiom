@@ -4,7 +4,10 @@ import { readFileSync } from 'fs';
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
 const EXECUTOR_URL    = 'http://127.0.0.1:7070/signal';
 const POLL_INTERVAL   = 8000;
-const AR_WALLET       = process.env.AR_WALLET || '/home/mk19/.aos.json';
+const AR_WALLET       = process.env.AR_WALLET;
+if (!AR_WALLET) {
+  throw new Error('AR_WALLET env var is required (path to Arweave wallet JSON, e.g. ~/.aos.json)');
+}
 
 const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
 const signer = createDataItemSigner(wallet);
