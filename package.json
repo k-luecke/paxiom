@@ -27,6 +27,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@ethereumjs/rlp": "^10.1.1",
     "@ethereumjs/trie": "^6.2.1",
