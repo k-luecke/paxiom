@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:sync-committee && npm run test:load-network && npm run test:services && npm run test:ui",
+    "test": "npm run test:sync-committee && npm run test:load-network && npm run test:services && npm run test:ui && npm run test:core",
+    "test:core": "node core/test.js",
     "test:sync-committee": "node --test services/sync-committee/test/server.test.mjs",
     "test:load-network": "node --test load-network/test/verifier.test.mjs load-network/test/reconstruct.test.mjs load-network/test/live.test.mjs",
     "test:services": "node --test services/shared/test/x402.test.mjs services/catalog/test/server.test.mjs services/load-network/test/server.test.mjs services/slot-storage-proof/test/server.test.mjs services/historical-state/test/server.test.mjs services/cross-chain-message/test/server.test.mjs services/simulation/test/server.test.mjs services/arb-engine/test/server.test.mjs services/compliance/test/server.test.mjs",
