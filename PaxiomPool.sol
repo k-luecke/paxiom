@@ -84,6 +84,19 @@ contract PaxiomPool is OApp {
 
     // ─── liquidity provider functions ────────────────────────────
 
+    /// @notice Deposit USDC and receive LP shares.
+    /// @dev SHARE ACCOUNTING (audit H-08): `totalLiquidity` is explicitly
+    ///      state-tracked and only mutates via {deposit}, {withdraw},
+    ///      {liquidateExpired} (collateral remainder) and `_settleLoan`
+    ///      (lpCut). It is NEVER derived from `balanceOf`, so the
+    ///      classical ERC4626 first-depositor donation attack does not
+    ///      apply: a direct USDC transfer to this contract does NOT
+    ///      inflate share price.
+    /// @dev RESIDUAL ROUNDING: at extreme ratios from fee accruals (long-
+    ///      lived pool, large LP_SHARE accumulation, tiny new deposit)
+    ///      `(amount * totalShares) / totalLiquidity` could truncate to
+    ///      zero. The `shares > 0` revert below makes that case loud and
+    ///      refundable instead of a silent gift to existing LPs.
     function deposit(uint256 amount) external {
         require(amount > 0, "Zero amount");
         require(IERC20(USDC).transferFrom(msg.sender, address(this), amount), "Transfer failed");
@@ -91,6 +104,7 @@ contract PaxiomPool is OApp {
         uint256 shares = totalShares == 0
             ? amount
             : (amount * totalShares) / totalLiquidity;
+        require(shares > 0, "Zero shares");
 
         lpShares[msg.sender] += shares;
         totalShares          += shares;
