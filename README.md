@@ -5,6 +5,12 @@
 > scaffolded under [`hyperbeam/`](hyperbeam/), [`services/sync-committee/`](services/sync-committee/),
 > and [`load-network/`](load-network/). See [`docs/phase-0-gates.md`](docs/phase-0-gates.md)
 > for explicit acceptance criteria and operator commands.
+>
+> **Phase 1 service catalog:** x402-gated HTTP reference services now cover
+> A-201 through A-205, with signed response envelopes and audit-record metadata.
+> See [`docs/phase-1-service-catalog.md`](docs/phase-1-service-catalog.md).
+> The local product console runs with `npm run service:ui` and includes
+> MetaMask signature login for wallet-bound request mode.
 
 ## Executive Summary
 
