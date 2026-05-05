@@ -63,7 +63,9 @@ function sendToAO(opportunity, attemptIndex = 0) {
     '})',
   ].join('\n');
 
-  // spawn with argv array — shell never sees the Lua string
+  // spawn with argv array — shell never sees the Lua string.
+  // Runtime prerequisite: `aos` CLI must be on $PATH (npm install -g aos@<pinned>).
+  // systemd: ensure ExecStart unit's PATH includes the aos install location.
   const child = spawn('aos', [MONITOR_PROCESS, '--gateway', gateway], {
     stdio: ['pipe', 'pipe', 'pipe']
   });

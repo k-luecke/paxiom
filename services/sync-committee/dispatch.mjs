@@ -38,7 +38,11 @@ async function hyperbeamDispatch(req, url) {
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
-    throw new Error(`hyperbeam dispatch returned ${resp.status}: ${await resp.text()}`);
+    // Truncate upstream error body to 256 chars to avoid leaking internal
+    // HyperBEAM detail through to API consumers / logs.
+    const body = await resp.text();
+    const snippet = body.length > 256 ? body.slice(0, 256) + '…' : body;
+    throw new Error(`hyperbeam dispatch returned ${resp.status}: ${snippet}`);
   }
   return await resp.json();
 }
