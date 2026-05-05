@@ -115,6 +115,15 @@ contract PaxiomPool is OApp {
 
     // ─── borrower functions ───────────────────────────────────────
 
+    /// @notice Borrow USDC across chains via LayerZero.
+    /// @dev `msg.value` MUST cover the LayerZero native fee. Use
+    ///      {quoteLzFee} immediately before calling to size it; excess is
+    ///      refunded to msg.sender by `_lzSend`. State is consistent on
+    ///      revert: USDC transfer happens before `_lzSend`, but a revert
+    ///      in `_lzSend` rolls back the entire transaction.
+    /// @dev RACE NOTE (audit H-07): an owner call to {setPeerEid} between
+    ///      {quoteLzFee} and {requestLoan} re-routes the message to a
+    ///      different peer. See {setPeerEid} for the operator runbook.
     function requestLoan(uint256 loanAmount) external payable {
         require(loanAmount > 0, "Zero amount");
         require(IERC20(USDC).balanceOf(address(this)) >= loanAmount, "Insufficient liquidity");
@@ -280,6 +289,23 @@ contract PaxiomPool is OApp {
         emit TreasuryProposalCancelled(cancelled);
     }
 
+    /// @notice Repoint the LayerZero peer endpoint id used by
+    ///         {requestLoan} and `_lzSend` paths.
+    /// @dev Liveness-only on funds: a wrong peer eid is gated downstream
+    ///      by `trustedPeer` (see `_lzReceive` srcEid check) so messaging
+    ///      bricks rather than redirects. However, a peer change racing
+    ///      an in-flight {requestLoan} burns the caller's `msg.value`
+    ///      quote and reverts the request, which is user-hostile.
+    /// @dev OPERATOR RUNBOOK for peer migrations:
+    ///        1. Stop accepting new {requestLoan} calls upstream
+    ///           (services / UI) BEFORE the on-chain change.
+    ///        2. Wait `TIMEOUT` (5 minutes) so any inflight loans
+    ///           settle, repay, or expire.
+    ///        3. Call {setPeerEid} with the new endpoint id.
+    ///        4. Call {setTrustedPeer} with the new peer address.
+    ///        5. Resume accepting {requestLoan} calls upstream.
+    ///      A future PR will gate this rotation through the operator
+    ///      UI's drain-then-update workflow (sibling of #90/#92/#96/#98).
     function setPeerEid(uint32 _eid) external onlyOwner {
         emit PeerEidUpdated(peerEid, _eid);
         peerEid = _eid;
