@@ -23,3 +23,7 @@ services/sync-committee/.cache/
 hyperbeam/devices/bls-sync-committee/bls_verifier.wasm
 hyperbeam/bringup/logs/
 hyperbeam/bringup/evidence/
+
+# audit L-21
+pubkey-cache.json
+paxiom-core-ledger-v1-dev.zip
