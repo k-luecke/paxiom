@@ -10,6 +10,11 @@ const PORT = Number(process.env.PAXIOM_UI_PORT || 3000);
 const HOST = process.env.PAXIOM_UI_HOST || '127.0.0.1';
 const here = dirname(fileURLToPath(import.meta.url));
 
+const ALLOWED_WALLETS = Object.freeze(parseAllowedWallets(process.env.PAXIOM_ALLOWED_WALLETS));
+if (ALLOWED_WALLETS.size === 0) {
+  throw new Error('PAXIOM_ALLOWED_WALLETS must list >=1 valid 0x-address (40 hex chars); refusing to start');
+}
+
 const sessions = new Map();
 const nonces = new Map();
 
@@ -119,20 +124,18 @@ async function verifyLogin({ address, nonce, signature }) {
 }
 
 function assertAllowedWallet(address) {
-  const allowed = allowedWallets();
-  if (allowed.size === 0) return;
-  if (!allowed.has(String(address || '').toLowerCase())) {
+  if (!ALLOWED_WALLETS.has(String(address || '').toLowerCase())) {
     const err = new Error('wallet is not allowlisted for this private console');
     err.status = 403;
     throw err;
   }
 }
 
-function allowedWallets() {
-  return new Set(String(process.env.PAXIOM_ALLOWED_WALLETS || '')
+function parseAllowedWallets(raw) {
+  return new Set(String(raw || '')
     .split(',')
     .map((wallet) => wallet.trim().toLowerCase())
-    .filter(Boolean));
+    .filter((wallet) => /^0x[0-9a-f]{40}$/.test(wallet)));
 }
 
 async function checkServices() {
