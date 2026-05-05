@@ -42,7 +42,9 @@ test('load-network service reconstructs a verified storage slot', async () => {
 
 test('load-network service returns x402 payment requirement when enabled', async () => {
   const oldRequire = process.env.REQUIRE_X402;
+  const oldFacilitator = process.env.X402_FACILITATOR_URL;
   process.env.REQUIRE_X402 = '1';
+  process.env.X402_FACILITATOR_URL = 'http://x402-test-stub.invalid';
   const { server, url } = await listen(createApp());
   try {
     const resp = await fetch(`${url}/v1/load-network/reconstruct/account`, {
@@ -57,6 +59,7 @@ test('load-network service returns x402 payment requirement when enabled', async
     assert.ok(resp.headers.get('payment-required'));
   } finally {
     process.env.REQUIRE_X402 = oldRequire;
+    process.env.X402_FACILITATOR_URL = oldFacilitator;
     server.close();
   }
 });
