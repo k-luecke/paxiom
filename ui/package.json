@@ -1,3 +1,8 @@
 {
+  "name": "paxiom-ui",
+  "version": "1.0.0",
+  "description": "Paxiom operator UI (SIWE-authenticated console).",
+  "license": "MIT",
+  "author": "k-luecke",
   "type": "module"
 }
