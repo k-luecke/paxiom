@@ -39,7 +39,7 @@ test('healthz returns ok', async () => {
   }
 });
 
-test('verify with mock dispatch returns S.02-shaped response', async () => {
+test('verify with mock dispatch returns signed A-202 artifact envelope', async () => {
   const { server, url } = await listenOnEphemeralPort(createApp());
   try {
     const resp = await fetch(`${url}/v1/sync-committee/verify`, {
@@ -50,19 +50,25 @@ test('verify with mock dispatch returns S.02-shaped response', async () => {
     assert.equal(resp.status, 200);
     const body = await resp.json();
 
+    assert.equal(body.service, 'A-202');
+    assert.equal(body.artifact.type, 'sync_committee_verification');
+    assert.match(body.platformSignature.responseHash, /^0x[0-9a-f]{64}$/);
+    assert.equal(body.auditRecord.aoMessageId.startsWith('mock-ao-'), true);
+
+    const payload = body.artifact.payload;
     // Required fields per O-701 / S.02.
     for (const field of [
       'verified', 'service', 'slot', 'fork_version', 'domain', 'signing_root',
       'participating', 'committee_size', 'primitive_return_code',
       'platform_signature', 'ao_message_id',
     ]) {
-      assert.ok(field in body, `missing field: ${field}`);
+      assert.ok(field in payload, `missing field: ${field}`);
     }
-    assert.equal(body.service, 'A-202');
-    assert.equal(body.slot, '8421337');
-    assert.match(body.fork_version, /^0x[0-9a-f]{8}$/);
-    assert.match(body.signing_root, /^0x[0-9a-f]{64}$/);
-    assert.equal(body.committee_size, 512);
+    assert.equal(payload.service, 'A-202');
+    assert.equal(payload.slot, '8421337');
+    assert.match(payload.fork_version, /^0x[0-9a-f]{8}$/);
+    assert.match(payload.signing_root, /^0x[0-9a-f]{64}$/);
+    assert.equal(payload.committee_size, 512);
     assert.ok(resp.headers.get('x-payment-response-correlation'));
   } finally {
     server.close();
@@ -94,6 +100,24 @@ test('verify rejects non-POST methods', async () => {
     assert.equal(resp.status, 405);
     assert.equal(resp.headers.get('allow'), 'POST');
   } finally {
+    server.close();
+  }
+});
+
+test('verify returns x402 payment requirement when enabled', async () => {
+  const oldRequire = process.env.REQUIRE_X402;
+  process.env.REQUIRE_X402 = '1';
+  const { server, url } = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${url}/v1/sync-committee/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wellFormedRequest),
+    });
+    assert.equal(resp.status, 402);
+    assert.ok(resp.headers.get('payment-required'));
+  } finally {
+    process.env.REQUIRE_X402 = oldRequire;
     server.close();
   }
 });

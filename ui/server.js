@@ -1,254 +1,200 @@
-import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
-import { spawn, execFileSync } from 'child_process';
-import { createPublicClient, http, formatEther } from 'viem';
-import { optimismSepolia } from 'viem/chains';
+import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { verifyMessage } from 'viem';
+import { phase1Catalog } from '../services/catalog/phase1.mjs';
 
-// ─── FIX: bind to localhost only ─────────────────────────────
-// Do NOT expose process control or signal proxy to the network.
-// If you need external access, put an authenticated reverse proxy in front.
-const PORT = 3000;
-const BIND = '127.0.0.1';
-// ─────────────────────────────────────────────────────────────
+const PORT = Number(process.env.PAXIOM_UI_PORT || 3000);
+const HOST = process.env.PAXIOM_UI_HOST || '127.0.0.1';
+const here = dirname(fileURLToPath(import.meta.url));
 
-const BASE = '/home/mk19/paxiom';
+const sessions = new Map();
+const nonces = new Map();
 
-const POOL_ADDRESS = '0x28321b5030B4E03ACCBD4236D1a97E01A7a9fc92';
-const POOL_ABI = [
-  { name: 'totalLiquidity', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  { name: 'totalFees',      type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  { name: 'loanCounter',    type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+const SERVICE_HEALTH = [
+  { id: 'CATALOG', url: 'http://127.0.0.1:8090/healthz' },
+  { id: 'A-201', url: 'http://127.0.0.1:8091/healthz' },
+  { id: 'A-202', url: 'http://127.0.0.1:8080/healthz' },
+  { id: 'A-203', url: 'http://127.0.0.1:8093/healthz' },
+  { id: 'A-204', url: 'http://127.0.0.1:8094/healthz' },
+  { id: 'A-205', url: 'http://127.0.0.1:8095/healthz' },
+  { id: 'COMPLIANCE-001', url: 'http://127.0.0.1:8083/healthz' },
 ];
 
-const publicOp = createPublicClient({ chain: optimismSepolia, transport: http('https://sepolia.optimism.io') });
-
-const PROCESSES = {
-  scanner:   { cmd: 'node', args: [`${BASE}/sdk/price-feeder.js`],   log: `${BASE}/scanner.log`,    pid: null },
-  simulator: { cmd: 'node', args: [`${BASE}/sdk/signing-daemon.js`], log: `${BASE}/daemon.log`,     pid: null },
-  executor:  { cmd: 'node', args: [`${BASE}/sdk/live-executor.js`],  log: `${BASE}/executor.log`,   pid: null },
-  aobridge:  { cmd: 'node', args: [`${BASE}/sdk/ao-bridge.js`],      log: `${BASE}/bridge.log`,     pid: null },
-};
-
-// ─── FIX: use execFileSync with argv arrays — no shell interpolation ──
-function getPids() {
-  const result = {};
-  for (const [name, p] of Object.entries(PROCESSES)) {
+export function createApp() {
+  return createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
     try {
-      const script = p.args[0].split('/').pop();
-      // pgrep -f matches against full command line; use execFileSync to avoid shell injection
-      const out = execFileSync('pgrep', ['-f', script], { encoding: 'utf8' }).trim();
-      result[name] = out ? parseInt(out.split('\n')[0]) : null;
-    } catch(e) {
-      // pgrep exits non-zero when no match — that is not an error
-      result[name] = null;
+      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+        return sendHtml(res, readFileSync(resolve(here, 'index.html'), 'utf8'));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/catalog') {
+        return sendJson(res, 200, phase1Catalog());
+      }
+      if (req.method === 'GET' && url.pathname === '/api/services/health') {
+        return sendJson(res, 200, { checkedAt: new Date().toISOString(), services: await checkServices() });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/session/nonce') {
+        const body = await readJson(req);
+        return sendJson(res, 200, createLoginChallenge(body.address));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/session/verify') {
+        const body = await readJson(req);
+        return sendJson(res, 200, await verifyLogin(body));
+      }
+      if (req.method === 'GET' && url.pathname === '/healthz') {
+        return sendJson(res, 200, { ok: true, service: 'PAXIOM-UI' });
+      }
+      res.writeHead(404);
+      return res.end();
+    } catch (e) {
+      const status = Number.isInteger(e.status) ? e.status : 500;
+      const error = status === 403 ? 'forbidden' : status === 500 ? 'ui_server_error' : 'bad_request';
+      return sendJson(res, status, { error, detail: e.message });
     }
-  }
-  return result;
-}
-
-function startProcess(name) {
-  const p = PROCESSES[name];
-  if (!p) return { error: 'unknown process' };
-  const env = { ...process.env };
-  const child = spawn(p.cmd, p.args, {
-    detached: true, stdio: 'ignore', env
   });
-  child.unref();
-  return { started: name, pid: child.pid };
 }
 
-function stopProcess(name) {
-  const p = PROCESSES[name];
-  if (!p) return { error: 'unknown process' };
+function createLoginChallenge(address) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address || '')) {
+    const err = new Error('address must be a 20-byte hex address');
+    err.status = 400;
+    throw err;
+  }
+  assertAllowedWallet(address);
+  const nonce = randomBytes(16).toString('hex');
+  const issuedAt = new Date().toISOString();
+  const message = [
+    'Paxiom wants to verify control of this wallet.',
+    '',
+    `Address: ${address}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt}`,
+    '',
+    'This signature does not authorize a transaction or payment.',
+  ].join('\n');
+  nonces.set(nonce, {
+    address: address.toLowerCase(),
+    message,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+  return { message, nonce, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() };
+}
+
+async function verifyLogin({ address, nonce, signature }) {
   try {
-    const script = p.args[0].split('/').pop();
-    // execFileSync with argv array — no shell string interpolation
-    execFileSync('pkill', ['-f', script], { stdio: 'ignore' });
-    return { stopped: name };
-  } catch(e) {
-    // pkill exits non-zero when nothing matched — treat as already stopped
-    return { stopped: name };
+    assertAllowedWallet(address);
+  } catch (e) {
+    return { ok: false, error: 'wallet_not_allowed' };
+  }
+  const challenge = nonces.get(nonce);
+  if (!challenge) return { ok: false, error: 'unknown_nonce' };
+  if (challenge.expiresAt < Date.now()) {
+    nonces.delete(nonce);
+    return { ok: false, error: 'expired_nonce' };
+  }
+  if (challenge.address !== String(address || '').toLowerCase()) {
+    return { ok: false, error: 'address_mismatch' };
+  }
+  let valid = false;
+  try {
+    valid = await verifyMessage({ address, message: challenge.message, signature });
+  } catch {
+    valid = false;
+  }
+  if (!valid) return { ok: false, error: 'invalid_signature' };
+
+  nonces.delete(nonce);
+  const token = randomUUID();
+  const session = {
+    token,
+    address,
+    authenticatedAt: new Date().toISOString(),
+    capabilities: ['catalog:read', 'services:probe', 'wallet:x402-ready'],
+  };
+  sessions.set(token, session);
+  return { ok: true, session };
+}
+
+function assertAllowedWallet(address) {
+  const allowed = allowedWallets();
+  if (allowed.size === 0) return;
+  if (!allowed.has(String(address || '').toLowerCase())) {
+    const err = new Error('wallet is not allowlisted for this private console');
+    err.status = 403;
+    throw err;
   }
 }
-// ─────────────────────────────────────────────────────────────
 
-function getLogTail(logFile, lines = 50) {
-  try {
-    if (!existsSync(logFile)) return [];
-    const content = readFileSync(logFile, 'utf8');
-    return content.trim().split('\n').slice(-lines);
-  } catch(e) { return []; }
+function allowedWallets() {
+  return new Set(String(process.env.PAXIOM_ALLOWED_WALLETS || '')
+    .split(',')
+    .map((wallet) => wallet.trim().toLowerCase())
+    .filter(Boolean));
 }
 
-function getScannerStats() {
-  try {
-    const content = readFileSync(`${BASE}/opportunities.log`, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l.trim());
-    const all = lines.map(l => JSON.parse(l));
-    if (!all.length) return { count: 0 };
-    const spreads = all.map(o => parseFloat(o.spreadPct));
-    const last = all[all.length - 1];
-    const recent = all.slice(-10);
-    return {
-      count: all.length,
-      avgSpread: (spreads.reduce((a,b) => a+b,0) / spreads.length).toFixed(4),
-      maxSpread: Math.max(...spreads).toFixed(4),
-      above05: spreads.filter(s => s >= 0.05).length,
-      above10: spreads.filter(s => s >= 0.1).length,
-      lastTimestamp: last.timestamp,
-      lastAsset: last.asset,
-      lastSpread: last.spreadPct,
-      lastRoute: `${last.buyChain} -> ${last.sellChain}`,
-      recent: recent.map(o => ({
-        time: o.timestamp.slice(11,19),
-        asset: o.asset,
-        spread: o.spreadPct,
-        route: `${o.buyChain}->${o.sellChain}`,
-        capturable: o.capturable
-      }))
-    };
-  } catch(e) { return { count: 0, error: e.message }; }
-}
-
-function getExecutionStats() {
-  try {
-    const content = readFileSync(`${BASE}/execution.log`, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l.trim());
-    const all = lines.map(l => JSON.parse(l));
-    const success = all.filter(e => e.status === 'broadcast_success');
-    const errors  = all.filter(e => e.status === 'error');
-    const gaps    = success.map(e => e.timingGapMs).filter(g => g > 0);
-    return {
-      total: all.length,
-      success: success.length,
-      errors: errors.length,
-      avgGapMs: gaps.length ? Math.round(gaps.reduce((a,b)=>a+b,0)/gaps.length) : 0,
-      minGapMs: gaps.length ? Math.min(...gaps) : 0,
-      maxGapMs: gaps.length ? Math.max(...gaps) : 0,
-      totalProfit: success.reduce((s,e) => s + (e.estimatedProfit||0), 0).toFixed(2),
-      recent: all.slice(-10).reverse().map(e => ({
-        time: (e.timestamp||'').slice(11,19),
-        asset: e.asset,
-        spread: e.spreadPct,
-        status: e.status,
-        gapMs: e.timingGapMs,
-        txA: (e.chainATxHash||'').slice(0,12) + '...',
-        txB: (e.chainBTxHash||'').slice(0,12) + '...',
-      }))
-    };
-  } catch(e) { return { total: 0, success: 0, errors: 0, error: e.message }; }
-}
-
-function getSimStats() {
-  try {
-    const content = readFileSync(`${BASE}/simulation.log`, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l.trim());
-    const all = lines.map(l => JSON.parse(l)).filter(l => l.mode === 'SIMULATE');
-    const profitable = all.filter(e => e.wouldBeProfitable);
-    return {
-      total: all.length,
-      profitable: profitable.length,
-      totalPnl: profitable.reduce((s,e) => s + (e.estimatedProfit||0), 0).toFixed(2),
-    };
-  } catch(e) { return { total: 0, profitable: 0, totalPnl: '0.00' }; }
-}
-
-async function getPoolState() {
-  try {
-    const [liq, fees, loans] = await Promise.all([
-      publicOp.readContract({ address: POOL_ADDRESS, abi: POOL_ABI, functionName: 'totalLiquidity' }),
-      publicOp.readContract({ address: POOL_ADDRESS, abi: POOL_ABI, functionName: 'totalFees' }),
-      publicOp.readContract({ address: POOL_ADDRESS, abi: POOL_ABI, functionName: 'loanCounter' }),
-    ]);
-    return {
-      totalLiquidity: (Number(liq) / 1e6).toFixed(2),
-      totalFees: (Number(fees) / 1e6).toFixed(6),
-      loanCounter: Number(loans),
-      address: POOL_ADDRESS
-    };
-  } catch(e) { return { error: e.message }; }
-}
-
-// ─── FIX: removed wildcard CORS ──────────────────────────────
-// No Access-Control-Allow-Origin: * — requests must come from
-// localhost or an authenticated reverse proxy.
-function setJsonHeaders(res) {
-  res.setHeader('Content-Type', 'application/json');
-}
-// ─────────────────────────────────────────────────────────────
-
-const server = createServer(async (req, res) => {
-  setJsonHeaders(res);
-  const url = req.url.split('?')[0];
-
-  if (url === '/api/status') {
-    const pids = getPids();
-    const scanner = getScannerStats();
-    const execution = getExecutionStats();
-    const sim = getSimStats();
-    const pool = await getPoolState();
-    res.writeHead(200);
-    res.end(JSON.stringify({ pids, scanner, execution, sim, pool, ts: Date.now() }));
-
-  } else if (url === '/api/logs/scanner') {
-    res.writeHead(200);
-    res.end(JSON.stringify({ lines: getLogTail(`${BASE}/scanner.log`, 30) }));
-
-  } else if (url === '/api/logs/executor') {
-    res.writeHead(200);
-    res.end(JSON.stringify({ lines: getLogTail(`${BASE}/executor.log`, 30) }));
-
-  } else if (req.method === 'POST' && url.startsWith('/api/process/')) {
-    const parts = url.split('/');
-    const action = parts[3];
-    const name   = parts[4];
-    // Validate action and name before doing anything
-    if (!['start', 'stop'].includes(action) || !PROCESSES[name]) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: 'invalid action or process name' }));
-      return;
+async function checkServices() {
+  return Promise.all(SERVICE_HEALTH.map(async (service) => {
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 900);
+    try {
+      const resp = await fetch(service.url, { signal: controller.signal });
+      return {
+        id: service.id,
+        ok: resp.ok,
+        status: resp.status,
+        latencyMs: Date.now() - startedAt,
+      };
+    } catch (e) {
+      return {
+        id: service.id,
+        ok: false,
+        status: 0,
+        latencyMs: Date.now() - startedAt,
+        error: e.name === 'AbortError' ? 'timeout' : 'offline',
+      };
+    } finally {
+      clearTimeout(timer);
     }
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', () => {
-      const result = action === 'start' ? startProcess(name) : stopProcess(name);
-      res.writeHead(200);
-      res.end(JSON.stringify(result));
-    });
+  }));
+}
 
-  } else if (req.method === 'POST' && url === '/api/signal') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', async () => {
+function sendHtml(res, html) {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
+}
+
+function sendJson(res, status, body) {
+  const buf = Buffer.from(JSON.stringify(body));
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Content-Length': buf.length,
+  });
+  res.end(buf);
+}
+
+async function readJson(req) {
+  return new Promise((resolveRead, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('error', reject);
+    req.on('end', () => {
       try {
-        const opp = JSON.parse(body);
-        // Forward to executor on localhost — executor also binds to 127.0.0.1
-        const resp = await fetch('http://127.0.0.1:7070/signal', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(opp)
-        });
-        const result = await resp.json();
-        res.writeHead(200);
-        res.end(JSON.stringify(result));
-      } catch(e) {
-        res.writeHead(500);
-        res.end(JSON.stringify({ error: e.message }));
+        resolveRead(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch (e) {
+        const err = new Error(`invalid json: ${e.message}`);
+        err.status = 400;
+        reject(err);
       }
     });
+  });
+}
 
-  } else if (req.url === '/' || req.url === '/index.html') {
-    const html = readFileSync('/home/mk19/paxiom/ui/index.html', 'utf8');
-    res.setHeader('Content-Type', 'text/html');
-    res.writeHead(200);
-    res.end(html);
-  } else {
-    res.writeHead(404);
-    res.end(JSON.stringify({ error: 'not found' }));
-  }
-});
-
-server.listen(PORT, BIND, () => {
-  console.log(`Paxiom UI backend running on http://${BIND}:${PORT}`);
-  console.log('NOTE: bound to localhost only — use SSH tunnel or reverse proxy for remote access');
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  createApp().listen(PORT, HOST, () => {
+    console.log(`Paxiom product console running on http://${HOST}:${PORT}`);
+  });
+}

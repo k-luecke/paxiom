@@ -1,0 +1,26 @@
+[Unit]
+Description=Paxiom %i service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paxiom
+Group=paxiom
+WorkingDirectory=/opt/paxiom
+EnvironmentFile=/etc/paxiom/paxiom.env
+ExecStart=/bin/sh /opt/paxiom/deploy/bin/paxiom-service-entrypoint.sh %i
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/paxiom /var/log/paxiom
+SyslogIdentifier=paxiom-%i
+
+[Install]
+WantedBy=multi-user.target
