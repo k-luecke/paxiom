@@ -14,12 +14,13 @@ interface IERC20 {
 contract PaxiomPool is OApp {
 
     // ─── constants ───────────────────────────────────────────────
-    uint256 public constant COLLATERAL_BPS   = 1000;  // 10% collateral
-    uint256 public constant PROTOCOL_FEE_BPS = 9;     // 0.09% total fee
-    uint256 public constant PROTOCOL_SHARE   = 30;    // 30% of fee to protocol
-    uint256 public constant LP_SHARE         = 70;    // 70% of fee to LPs
-    uint256 public constant TIMEOUT          = 5 minutes;
-    uint256 public constant BPS_DENOM        = 10000;
+    uint256 public constant COLLATERAL_BPS         = 1000;  // 10% collateral
+    uint256 public constant PROTOCOL_FEE_BPS       = 9;     // 0.09% total fee
+    uint256 public constant PROTOCOL_SHARE         = 30;    // 30% of fee to protocol
+    uint256 public constant LP_SHARE               = 70;    // 70% of fee to LPs
+    uint256 public constant LIQUIDATOR_BOUNTY_BPS  = 500;   // 5% of slashed collateral
+    uint256 public constant TIMEOUT                = 5 minutes;
+    uint256 public constant BPS_DENOM              = 10000;
 
     uint8 constant MSG_LOAN_REQUEST = 1;
     uint8 constant MSG_EXEC_CONFIRM = 2;
@@ -54,6 +55,7 @@ contract PaxiomPool is OApp {
     event LoanIssued(uint256 indexed loanId, address indexed borrower, uint256 amount);
     event LoanRepaid(uint256 indexed loanId, uint256 fee);
     event LoanDefaulted(uint256 indexed loanId, uint256 collateralSlashed);
+    event LiquidatorPaid(address indexed liquidator, uint256 indexed loanId, uint256 bounty);
     event ExecutionConfirmed(uint256 indexed loanId);
 
     // ─── constructor ─────────────────────────────────────────────
@@ -157,9 +159,15 @@ contract PaxiomPool is OApp {
         require(loan.active && !loan.repaid, "Loan not active");
         require(block.timestamp > loan.expiry, "Not expired");
 
-        loan.active     = false;
-        totalLiquidity += loan.collateral;
+        loan.active = false;
 
+        uint256 bounty = (loan.collateral * LIQUIDATOR_BOUNTY_BPS) / BPS_DENOM;
+        uint256 toPool = loan.collateral - bounty;
+
+        totalLiquidity += toPool;
+        require(IERC20(USDC).transfer(msg.sender, bounty), "Bounty transfer failed");
+
+        emit LiquidatorPaid(msg.sender, loanId, bounty);
         emit LoanDefaulted(loanId, loan.collateral);
     }
 
