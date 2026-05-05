@@ -14,37 +14,72 @@ local json = require("json")
 local HARNESS_BIN = os.getenv("BLS_DEVICE_HARNESS")
     or "/usr/local/bin/bls-device-harness"
 
+-- Single-quote-escape a string for safe POSIX-shell interpolation.
+local function shell_quote(s)
+    return "'" .. (s:gsub("'", "'\\''")) .. "'"
+end
+
 local function dispatch(msg)
     local body = msg.body or msg.Body or msg.data or msg.Data
     if not body then
         return { status = 400, body = json.encode({ error = "missing body" }) }
     end
 
-    -- Pipe the request JSON to the bls-device harness on stdin; capture
-    -- stdout. The harness is built from k-luecke/bls-verifier's bls-device
-    -- crate and exposes the same VerifyResponse JSON shape this device
-    -- promises in O-701 / S.02.
-    local cmd = string.format("%s --json", HARNESS_BIN)
-    local proc = io.popen(cmd, "w")
-    proc:write(body)
-    local ok = proc:close()
+    -- Lua's io.popen is unidirectional, so we round-trip through a temp file
+    -- on stdin and capture the harness's stdout via popen("r"). The harness
+    -- is built from k-luecke/bls-verifier's bls-device crate and writes a
+    -- VerifyResponse JSON document to stdout per O-701 / S.02.
+    local input_path = os.tmpname()
+    local input_file, open_err = io.open(input_path, "w")
+    if not input_file then
+        return {
+            status = 500,
+            body = json.encode({ error = "tmp write failed", detail = open_err })
+        }
+    end
+    input_file:write(body)
+    input_file:close()
+
+    local cmd = string.format("%s --json < %s", shell_quote(HARNESS_BIN), shell_quote(input_path))
+    local proc = io.popen(cmd, "r")
+    if not proc then
+        os.remove(input_path)
+        return {
+            status = 502,
+            body = json.encode({ error = "bls-device harness failed to spawn", harness = HARNESS_BIN })
+        }
+    end
+
+    local stdout = proc:read("*a") or ""
+    local ok, _, exit_code = proc:close()
+    os.remove(input_path)
 
     if not ok then
         return {
             status = 502,
-            body = json.encode({ error = "bls-device harness failed", harness = HARNESS_BIN })
+            body = json.encode({
+                error = "bls-device harness exited non-zero",
+                harness = HARNESS_BIN,
+                exit_code = exit_code,
+            })
         }
     end
 
-    -- The harness writes the response to a known temp file (path supplied
-    -- via env). Real wiring is filed for follow-up — this stub keeps the
-    -- HyperBEAM-facing contract documented.
-    return {
-        status = 200,
-        body = json.encode({
-            note = "Lua harness stub — wire bls-device-harness stdout once the harness binary lands",
-        })
-    }
+    -- Fail closed if the harness produced no parseable JSON or no boolean
+    -- `verified` field. Returning a synthesised "ok" body would let
+    -- downstream consumers treat unverified data as verified.
+    local parsed_ok, parsed = pcall(json.decode, stdout)
+    if not parsed_ok or type(parsed) ~= "table" or type(parsed.verified) ~= "boolean" then
+        return {
+            status = 502,
+            body = json.encode({
+                error = "harness verdict missing or malformed",
+                harness = HARNESS_BIN,
+            })
+        }
+    end
+
+    return { status = 200, body = stdout }
 end
 
 return { dispatch = dispatch }
