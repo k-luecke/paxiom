@@ -3,6 +3,10 @@ import { appendFileSync, readFileSync, writeFileSync } from 'fs';
 const PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
 const LOG_FILE = '/home/mk19/paxiom/opportunities.log';
 
+// `decimals` here is a derived scaling factor (NOT the ERC20 token's
+// decimals): it equals abs(token0.decimals - token1.decimals) where
+// token1 is the asset side. See top-level price-feeder.js for the
+// canonical comment.
 const POOLS = [
   { chain: 'arbitrum', dex: 'uniswap', asset: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', pool: '0xC6962004f452bE9203591991D15f6b388e09E8D0', decimals: 12 },
   { chain: 'base', dex: 'uniswap', asset: 'ETH', rpc: 'https://mainnet.base.org', pool: '0xd0b53D9277642d899DF5C87A3966A349A798F224', decimals: 12 },
