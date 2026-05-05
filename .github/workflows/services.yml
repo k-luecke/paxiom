@@ -17,7 +17,7 @@ jobs:
           node-version: '20'
 
       - name: Install paxiom dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Verify wasm checksum integrity
         run: |
