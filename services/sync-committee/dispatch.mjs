@@ -68,8 +68,9 @@ function harnessDispatch(req, harnessBin) {
 }
 
 // Synthesises a VerifyResponse without hitting any beacon or running blst.
-// Verification status is keyed off the request hash; tests can assert shape
-// and round-trip without standing up the full Rust harness.
+// Fail closed: no real BLS verification ran, so verified=false and mock=true
+// are returned. Downstream consumers that key off payload.verified will see
+// the truth; consumers that key off payload.mock can branch explicitly.
 function mockDispatch(req) {
   const hash = createHash('sha256');
   hash.update(JSON.stringify({
@@ -80,15 +81,16 @@ function mockDispatch(req) {
   const digest = hash.digest('hex');
 
   return Promise.resolve({
-    verified: true,
+    verified: false,
+    mock: true,
     service: 'A-202',
     slot: req.slot,
     fork_version: '0x06000000',
     domain: '0x' + 'a'.repeat(64),
     signing_root: '0x' + digest,
-    participating: 432,
-    committee_size: 512,
-    primitive_return_code: 1,
+    participating: 0,
+    committee_size: 0,
+    primitive_return_code: -1,
     platform_signature: '0x' + digest,
     ao_message_id: `mock-ao-${req.slot}-${digest.slice(0, 12)}`,
   });
