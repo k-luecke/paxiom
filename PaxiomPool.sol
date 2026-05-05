@@ -35,6 +35,12 @@ contract PaxiomPool is OApp {
     uint256 public totalFees;
     uint256 public loanCounter;
 
+    // 24h chosen vs. 5-minute loan TIMEOUT: any in-flight loan settles
+    // to the old treasury before a swap can take effect.
+    uint256 public constant TREASURY_TIMELOCK = 24 hours;
+    address public pendingTreasury;
+    uint256 public pendingTreasuryEta;
+
     mapping(address => uint256) public lpShares;
     uint256 public totalShares;
 
@@ -59,6 +65,10 @@ contract PaxiomPool is OApp {
     event LiquidatorPaid(address indexed liquidator, uint256 indexed loanId, uint256 bounty);
     event ExecutionConfirmed(uint256 indexed loanId);
     event TrustedPeerUpdated(uint32 indexed eid, bytes32 indexed peer);
+    event TreasuryProposed(address indexed treasury, uint256 eta);
+    event TreasuryUpdated(address indexed previous, address indexed current);
+    event TreasuryProposalCancelled(address indexed treasury);
+    event PeerEidUpdated(uint32 indexed previous, uint32 indexed current);
 
     // ─── constructor ─────────────────────────────────────────────
     constructor(
@@ -243,11 +253,35 @@ contract PaxiomPool is OApp {
 
     // ─── admin ────────────────────────────────────────────────────
 
-    function setTreasury(address _treasury) external onlyOwner {
-        protocolTreasury = _treasury;
+    function proposeTreasury(address _treasury) external onlyOwner {
+        require(_treasury != address(0), "Zero treasury");
+        require(pendingTreasuryEta == 0, "Proposal pending");
+        pendingTreasury    = _treasury;
+        pendingTreasuryEta = block.timestamp + TREASURY_TIMELOCK;
+        emit TreasuryProposed(_treasury, pendingTreasuryEta);
+    }
+
+    function executeTreasury() external onlyOwner {
+        require(pendingTreasuryEta != 0, "No proposal");
+        require(block.timestamp >= pendingTreasuryEta, "Timelock active");
+        address previous = protocolTreasury;
+        address next     = pendingTreasury;
+        protocolTreasury = next;
+        pendingTreasury    = address(0);
+        pendingTreasuryEta = 0;
+        emit TreasuryUpdated(previous, next);
+    }
+
+    function cancelTreasury() external onlyOwner {
+        require(pendingTreasuryEta != 0, "No proposal");
+        address cancelled = pendingTreasury;
+        pendingTreasury    = address(0);
+        pendingTreasuryEta = 0;
+        emit TreasuryProposalCancelled(cancelled);
     }
 
     function setPeerEid(uint32 _eid) external onlyOwner {
+        emit PeerEidUpdated(peerEid, _eid);
         peerEid = _eid;
     }
 
