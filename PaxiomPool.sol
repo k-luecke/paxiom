@@ -3,6 +3,7 @@ pragma solidity 0.8.19;
 
 import { OApp, Origin, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/OApp.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
@@ -11,7 +12,17 @@ interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
-contract PaxiomPool is OApp {
+/// @dev TOKEN ASSUMPTION (audit H-13): `USDC` MUST be a standard ERC20 with
+///      no transfer hooks (no ERC777 `tokensReceived`, no ERC1363
+///      `onTransferReceived`) and no fee-on-transfer. The constructor does
+///      not validate this; deployers MUST verify the token address against
+///      Circle's canonical USDC for the target chain. Non-conforming tokens
+///      re-open the `_settleLoan` reentrancy surface despite this contract's
+///      `nonReentrant` modifiers and CEI ordering.
+/// @dev Inheritance: ReentrancyGuard is appended after OApp so OApp's
+///      storage layout is preserved (ReentrancyGuard adds a single
+///      `uint256 _status` slot at the end).
+contract PaxiomPool is OApp, ReentrancyGuard {
 
     // ─── constants ───────────────────────────────────────────────
     uint256 public constant COLLATERAL_BPS         = 1000;  // 10% collateral
@@ -103,7 +114,7 @@ contract PaxiomPool is OApp {
     ///      `(amount * totalShares) / totalLiquidity` could truncate to
     ///      zero. The `shares > 0` revert below makes that case loud and
     ///      refundable instead of a silent gift to existing LPs.
-    function deposit(uint256 amount) external {
+    function deposit(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
         require(IERC20(USDC).transferFrom(msg.sender, address(this), amount), "Transfer failed");
 
@@ -119,7 +130,7 @@ contract PaxiomPool is OApp {
         emit Deposited(msg.sender, amount, shares);
     }
 
-    function withdraw(uint256 shares) external {
+    function withdraw(uint256 shares) external nonReentrant {
         require(shares > 0 && lpShares[msg.sender] >= shares, "Insufficient shares");
 
         uint256 amount = (shares * totalLiquidity) / totalShares;
@@ -144,7 +155,7 @@ contract PaxiomPool is OApp {
     /// @dev RACE NOTE (audit H-07): an owner call to {setPeerEid} between
     ///      {quoteLzFee} and {requestLoan} re-routes the message to a
     ///      different peer. See {setPeerEid} for the operator runbook.
-    function requestLoan(uint256 loanAmount) external payable {
+    function requestLoan(uint256 loanAmount) external payable nonReentrant {
         require(loanAmount > 0, "Zero amount");
         require(IERC20(USDC).balanceOf(address(this)) >= loanAmount, "Insufficient liquidity");
 
@@ -191,7 +202,7 @@ contract PaxiomPool is OApp {
     ///      `loan.borrower == msg.sender`, so the window is exclusively
     ///      the borrower's. This eliminates the miner-orderable race at
     ///      the original `expiry` boundary.
-    function repayLoan(uint256 loanId) external {
+    function repayLoan(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(loan.borrower == msg.sender, "Not borrower");
@@ -207,7 +218,7 @@ contract PaxiomPool is OApp {
     ///         `TIMEOUT + BORROWER_GRACE`.
     /// @dev Gated past `expiry + BORROWER_GRACE` to give the borrower an
     ///      exclusive repay window (audit H-09).
-    function liquidateExpired(uint256 loanId) external {
+    function liquidateExpired(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(block.timestamp > loan.expiry + BORROWER_GRACE, "In grace");
@@ -226,21 +237,30 @@ contract PaxiomPool is OApp {
 
     // ─── internal settlement ─────────────────────────────────────
 
+    /// @dev Strict checks-effects-interactions (audit H-13): all state
+    ///      mutations complete BEFORE any external transfer, so a hooked
+    ///      recipient cannot observe partially-mutated state mid-call.
     function _settleLoan(uint256 loanId) internal {
         Loan storage loan = loans[loanId];
-        loan.active = false;
-        loan.repaid = true;
 
-        uint256 protocolCut = (loan.fee * PROTOCOL_SHARE) / 100;
-        uint256 lpCut       = loan.fee - protocolCut;
+        // ── Effects: snapshot then mutate all state ────────────────
+        uint256 fee         = loan.fee;
+        uint256 protocolCut = (fee * PROTOCOL_SHARE) / 100;
+        uint256 lpCut       = fee - protocolCut;
+        uint256 collateral  = loan.collateral;
+        address borrower    = loan.borrower;
+        uint256 loanAmount  = loan.amount;
 
+        loan.active     = false;
+        loan.repaid     = true;
+        totalLiquidity += loanAmount + lpCut;
+        totalFees      += fee;
+
+        // ── Interactions: external calls last ──────────────────────
         require(IERC20(USDC).transfer(protocolTreasury, protocolCut), "Treasury transfer failed");
-        totalLiquidity += loan.amount + lpCut;
-        totalFees      += loan.fee;
+        require(IERC20(USDC).transfer(borrower, collateral), "Collateral return failed");
 
-        require(IERC20(USDC).transfer(loan.borrower, loan.collateral), "Collateral return failed");
-
-        emit LoanRepaid(loanId, loan.fee);
+        emit LoanRepaid(loanId, fee);
     }
 
     // ─── LayerZero receive ────────────────────────────────────────
