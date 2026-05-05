@@ -43,20 +43,36 @@ async function handleEvent(req, res, events, resource) {
   }
 }
 
+// Caller-overridable fields. These have server-managed defaults that are
+// the security-relevant point of L-14 / I-09: event_id, recorded_at,
+// jurisdiction, regulatory_context. Listing them explicitly + only spreading
+// known safe keys closes the unconditional spread that lets callers forge
+// audit metadata.
+const SERVER_DEFAULT_FIELDS = new Set([
+  'event_id', 'recorded_at', 'jurisdiction', 'regulatory_context',
+]);
+
 function normalizeEvent(input) {
   if (!input || typeof input !== 'object') throw new Error('event must be an object');
   if (!input.event_type) throw new Error('event_type is required');
   if (!input.source_service) throw new Error('source_service is required');
-  return {
-    event_id: input.event_id || `paxiom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    recorded_at: input.recorded_at || new Date().toISOString(),
-    jurisdiction: input.jurisdiction || 'US',
-    regulatory_context: input.regulatory_context || [
+
+  const event = {
+    event_id: `paxiom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    recorded_at: new Date().toISOString(),
+    jurisdiction: 'US',
+    regulatory_context: [
       'CFTC GMAC Digital Asset Markets Subcommittee',
       'GDF/ISDA U.S. TMMF Working Group',
     ],
-    ...input,
   };
+  // Spread caller fields, but explicitly skip the server-managed ones so a
+  // caller can't forge event_id / recorded_at / regulatory_context.
+  for (const [key, value] of Object.entries(input)) {
+    if (SERVER_DEFAULT_FIELDS.has(key)) continue;
+    event[key] = value;
+  }
+  return event;
 }
 
 function loadInitialEvents() {
