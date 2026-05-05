@@ -14,12 +14,13 @@ interface IERC20 {
 contract PaxiomPool is OApp {
 
     // ─── constants ───────────────────────────────────────────────
-    uint256 public constant COLLATERAL_BPS   = 1000;  // 10% collateral
-    uint256 public constant PROTOCOL_FEE_BPS = 9;     // 0.09% total fee
-    uint256 public constant PROTOCOL_SHARE   = 30;    // 30% of fee to protocol
-    uint256 public constant LP_SHARE         = 70;    // 70% of fee to LPs
-    uint256 public constant TIMEOUT          = 5 minutes;
-    uint256 public constant BPS_DENOM        = 10000;
+    uint256 public constant COLLATERAL_BPS         = 1000;  // 10% collateral
+    uint256 public constant PROTOCOL_FEE_BPS       = 9;     // 0.09% total fee
+    uint256 public constant PROTOCOL_SHARE         = 30;    // 30% of fee to protocol
+    uint256 public constant LP_SHARE               = 70;    // 70% of fee to LPs
+    uint256 public constant LIQUIDATOR_BOUNTY_BPS  = 500;   // 5% of slashed collateral
+    uint256 public constant TIMEOUT                = 5 minutes;
+    uint256 public constant BPS_DENOM              = 10000;
 
     uint8 constant MSG_LOAN_REQUEST = 1;
     uint8 constant MSG_EXEC_CONFIRM = 2;
@@ -28,6 +29,7 @@ contract PaxiomPool is OApp {
     address public immutable USDC;
     address public protocolTreasury;
     uint32  public peerEid;
+    bytes32 public trustedPeer;
 
     uint256 public totalLiquidity;
     uint256 public totalFees;
@@ -54,7 +56,9 @@ contract PaxiomPool is OApp {
     event LoanIssued(uint256 indexed loanId, address indexed borrower, uint256 amount);
     event LoanRepaid(uint256 indexed loanId, uint256 fee);
     event LoanDefaulted(uint256 indexed loanId, uint256 collateralSlashed);
+    event LiquidatorPaid(address indexed liquidator, uint256 indexed loanId, uint256 bounty);
     event ExecutionConfirmed(uint256 indexed loanId);
+    event TrustedPeerUpdated(uint32 indexed eid, bytes32 indexed peer);
 
     // ─── constructor ─────────────────────────────────────────────
     constructor(
@@ -157,9 +161,15 @@ contract PaxiomPool is OApp {
         require(loan.active && !loan.repaid, "Loan not active");
         require(block.timestamp > loan.expiry, "Not expired");
 
-        loan.active     = false;
-        totalLiquidity += loan.collateral;
+        loan.active = false;
 
+        uint256 bounty = (loan.collateral * LIQUIDATOR_BOUNTY_BPS) / BPS_DENOM;
+        uint256 toPool = loan.collateral - bounty;
+
+        totalLiquidity += toPool;
+        require(IERC20(USDC).transfer(msg.sender, bounty), "Bounty transfer failed");
+
+        emit LiquidatorPaid(msg.sender, loanId, bounty);
         emit LoanDefaulted(loanId, loan.collateral);
     }
 
@@ -185,12 +195,15 @@ contract PaxiomPool is OApp {
     // ─── LayerZero receive ────────────────────────────────────────
 
     function _lzReceive(
-        Origin calldata,
+        Origin calldata _origin,
         bytes32,
         bytes calldata _message,
         address,
         bytes calldata
     ) internal override {
+        require(_origin.srcEid == peerEid, "Untrusted srcEid");
+        require(trustedPeer != bytes32(0) && _origin.sender == trustedPeer, "Untrusted peer");
+
         (uint8 msgType, uint256 loanId) = abi.decode(_message, (uint8, uint256));
 
         if (msgType == MSG_EXEC_CONFIRM) {
@@ -236,5 +249,10 @@ contract PaxiomPool is OApp {
 
     function setPeerEid(uint32 _eid) external onlyOwner {
         peerEid = _eid;
+    }
+
+    function setTrustedPeer(bytes32 _peer) external onlyOwner {
+        trustedPeer = _peer;
+        emit TrustedPeerUpdated(peerEid, _peer);
     }
 }

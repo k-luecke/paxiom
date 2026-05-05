@@ -1,12 +1,17 @@
 // Fixture-driven test for the sync-committee HTTP service.
 // Forces MOCK_DEVICE=1 so dispatch is deterministic; asserts the response
 // shape matches O-701 / S.02 and the validator catches bad input.
+//
+// Mock dispatch is fail-closed: payload.verified=false and payload.mock=true
+// so downstream consumers cannot mistake synthetic responses for real BLS
+// verifications.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../server.mjs';
 
 process.env.MOCK_DEVICE = '1';
+process.env.PAXIOM_ALLOW_MOCK = '1';
 
 function listenOnEphemeralPort(app) {
   return new Promise((resolve) => {
@@ -68,7 +73,12 @@ test('verify with mock dispatch returns signed A-202 artifact envelope', async (
     assert.equal(payload.slot, '8421337');
     assert.match(payload.fork_version, /^0x[0-9a-f]{8}$/);
     assert.match(payload.signing_root, /^0x[0-9a-f]{64}$/);
-    assert.equal(payload.committee_size, 512);
+    // Mock dispatch is fail-closed: no real BLS verification ran.
+    assert.equal(payload.verified, false);
+    assert.equal(payload.mock, true);
+    assert.equal(payload.committee_size, 0);
+    assert.equal(payload.participating, 0);
+    assert.equal(payload.primitive_return_code, -1);
     assert.ok(resp.headers.get('x-payment-response-correlation'));
   } finally {
     server.close();
