@@ -39,20 +39,19 @@ export function createServiceEnvelope({
 
 function signResponse(responseHash) {
   const privateKey = process.env.PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM;
-  if (privateKey) {
-    const sig = sign(null, Buffer.from(responseHash, 'hex'), privateKey).toString('base64');
-    return {
-      algorithm: 'ed25519',
-      keyId: process.env.PAXIOM_RESPONSE_SIGNING_KEY_ID || 'paxiom-hot-response-key',
-      responseHash: `0x${responseHash}`,
-      signature: sig,
-    };
+  if (!privateKey) {
+    throw new Error(
+      'PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM is required to sign service envelopes. ' +
+      'Refusing to emit forgeable dev signatures (audit H-01, issue #12). ' +
+      'Provide an ed25519 PKCS8 PEM key.',
+    );
   }
+  const sig = sign(null, Buffer.from(responseHash, 'hex'), privateKey).toString('base64');
   return {
-    algorithm: 'dev-sha256',
-    keyId: 'dev-response-key',
+    algorithm: 'ed25519',
+    keyId: process.env.PAXIOM_RESPONSE_SIGNING_KEY_ID || 'paxiom-hot-response-key',
     responseHash: `0x${responseHash}`,
-    signature: `dev:${responseHash}`,
+    signature: sig,
   };
 }
 

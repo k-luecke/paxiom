@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setupResponseSigningKey } from '../../shared/test/sign-test-helper.mjs';
 import { createApp } from '../server.mjs';
+
+setupResponseSigningKey();
 
 process.env.MOCK_LOAD_NETWORK = '1';
 
@@ -33,7 +36,9 @@ test('A-205 returns verified historical storage state', async () => {
     assert.equal(body.service, 'A-205');
     assert.equal(body.artifact.type, 'verified_historical_storage_state');
     assert.equal(body.artifact.payload.verified, true);
-    assert.match(body.platformSignature.signature, /^dev:/);
+    assert.equal(body.platformSignature.algorithm, 'ed25519');
+    assert.equal(typeof body.platformSignature.signature, 'string');
+    assert.ok(body.platformSignature.signature.length > 0);
   } finally {
     server.close();
   }
