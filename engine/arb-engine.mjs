@@ -26,7 +26,9 @@ export function normalizeOpportunity(input) {
   if (!Number.isFinite(tradeSizeUsd) || tradeSizeUsd <= 0) throw new Error('tradeSizeUsd must be positive');
 
   return {
-    id: input.id || `${timestamp}:${asset}:${buyChain}:${sellChain}:${spreadPct}`,
+    id: input.id || (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${timestamp}:${encodeURIComponent(asset)}:${encodeURIComponent(buyChain)}:${encodeURIComponent(sellChain)}:${spreadPct}`),
     asset,
     buyChain,
     sellChain,

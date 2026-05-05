@@ -14,5 +14,10 @@
   ],
   "service": "A-202",
   "source_repo": "https://github.com/k-luecke/bls-verifier",
-  "source_path": "bls-device/"
+  "source_path": "bls-device/",
+  "_notes": [
+    "wasm_path is intentionally absent until bls-verifier ships its first release.",
+    "Until then, the AO-side wasm at ao-processes/bls_verifier.wasm is the canonical copy.",
+    "When the harness wasm lands here, vendor it AND remove this _notes block (audit I-01)."
+  ]
 }
