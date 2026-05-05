@@ -347,8 +347,10 @@ async function executeLive(opp, source = 'POLL') {
     ]);
     const timingGapMs = Date.now() - t0;
     lastExecTime = Date.now();
-    console.log(`OP:   https://sepolia-optimism.etherscan.io/tx/${chainAHash}`);
-    console.log(`Base: https://sepolia.basescan.org/tx/${chainBHash}`);
+    const opEtherscan  = process.env.MAINNET === 'true' ? 'https://optimistic.etherscan.io'  : 'https://sepolia-optimism.etherscan.io';
+    const baseScan     = process.env.MAINNET === 'true' ? 'https://basescan.org'             : 'https://sepolia.basescan.org';
+    console.log(`OP:   ${opEtherscan}/tx/${chainAHash}`);
+    console.log(`Base: ${baseScan}/tx/${chainBHash}`);
     logExecution({ source, asset: opp.asset, spreadPct: opp.spreadPct,
       buyChain: opp.buyChain, sellChain: opp.sellChain,
       chainATxHash: chainAHash, chainBTxHash: chainBHash,
