@@ -105,6 +105,13 @@ contract PaxiomPool is OApp, ReentrancyGuard {
         peerEid          = _peerEid;
         // Audit M-16: default LayerZero options (type 1, 200_000 gas) at
         // construction; operators can raise via setLzOptions.
+        // Audit L-07: this default uses LayerZero OptionsType v1 encoding
+        // (`uint16(1) | uint256(gas)`). v1 still works on every live LZ v2
+        // endpoint and is sufficient as a bootstrap; for v3 byte-format
+        // migrations operators encode options off-chain via the v2
+        // OptionsBuilder (e.g. `OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value)`)
+        // and set them through `setLzOptions(bytes)` below. No protocol
+        // feature is gated on v3 — the v1 default is purely a startup value.
         lzOptions        = abi.encodePacked(uint16(1), uint256(200000));
     }
 
