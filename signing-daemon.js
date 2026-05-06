@@ -4,9 +4,12 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { optimismSepolia, baseSepolia } from 'viem/chains';
 
 // ─── config ──────────────────────────────────────────────────
-const SIMULATE = true;
+// Audit M-21: SIMULATE and SIM_LOG were declared but never read; the
+// daemon always called executeLive(). Removing them removes the
+// "operator believes the daemon is in sim mode" footgun. The
+// top-level signing-daemon.js itself is tracked by audit H-05 (top-
+// level/sdk drift) for full deletion.
 const LOG_FILE      = '/home/mk19/paxiom/opportunities.log';
-const SIM_LOG       = '/home/mk19/paxiom/simulation.log';
 const EXEC_LOG      = '/home/mk19/paxiom/execution.log';
 const MIN_SPREAD    = 0.02;
 const CHECK_INTERVAL = 10000;
