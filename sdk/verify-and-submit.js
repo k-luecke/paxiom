@@ -17,6 +17,8 @@ if (!PUBKEY_CACHE) {
   throw new Error('PUBKEY_CACHE env var is required (path to pubkey cache JSON file)');
 }
 const CACHE_TTL = 24 * 60 * 60 * 1000;
+// Sync committee period = floor(slot / SLOTS_PER_PERIOD); 256 epochs * 32 slots.
+const SLOTS_PER_PERIOD = 8192;
 
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -46,20 +48,27 @@ async function fetchPubkeys(indices) {
   return pubkeys;
 }
 
-async function getPubkeys(indices) {
+// Audit follow-up #100: pubkey cache is keyed on (period, length). Period
+// alone is sufficient because sync committee size is constant 512, but the
+// length check is kept as a structural invariant -- a future rotation that
+// changed committee size would invalidate stale caches automatically.
+async function getPubkeys(indices, period) {
   if (existsSync(PUBKEY_CACHE)) {
     const cache = JSON.parse(readFileSync(PUBKEY_CACHE, 'utf-8'));
     const age = Date.now() - cache.timestamp;
-    if (age < CACHE_TTL && cache.pubkeys.length === indices.length) {
-      console.log(`Using cached pubkeys (${Math.round(age / 60000)}min old)`);
+    if (age < CACHE_TTL
+        && cache.period === period
+        && Array.isArray(cache.pubkeys)
+        && cache.pubkeys.length === indices.length) {
+      console.log(`Using cached pubkeys (period ${period}, ${Math.round(age / 60000)}min old)`);
       return cache.pubkeys;
     }
   }
 
-  console.log('Fetching pubkeys (cache miss)...');
+  console.log(`Fetching pubkeys (cache miss, period ${period})...`);
   const pubkeys = await fetchPubkeys(indices);
-  writeFileSync(PUBKEY_CACHE, JSON.stringify({ timestamp: Date.now(), pubkeys }));
-  console.log(`Fetched and cached ${pubkeys.length} pubkeys`);
+  writeFileSync(PUBKEY_CACHE, JSON.stringify({ timestamp: Date.now(), period, pubkeys }));
+  console.log(`Fetched and cached ${pubkeys.length} pubkeys for period ${period}`);
   return pubkeys;
 }
 
@@ -115,7 +124,8 @@ async function main() {
   const indices = sc.data.validators;
   console.log(`Got ${indices.length} sync committee indices`);
 
-  const pubkeys = await getPubkeys(indices);
+  const period = Math.floor(Number(slot) / SLOTS_PER_PERIOD);
+  const pubkeys = await getPubkeys(indices, period);
 
   const verifierInput = JSON.stringify({
     signature: syncAggregate.sync_committee_signature,
