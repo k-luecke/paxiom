@@ -17,6 +17,7 @@ if (ALLOWED_WALLETS.size === 0) {
 
 const sessions = new Map();
 const nonces = new Map();
+const MAX_NONCES = 1024;
 
 const SERVICE_HEALTH = [
   { id: 'CATALOG', url: 'http://127.0.0.1:8090/healthz' },
@@ -80,12 +81,26 @@ function createLoginChallenge(address) {
     '',
     'This signature does not authorize a transaction or payment.',
   ].join('\n');
+  // Audit M-19: cap the in-memory nonce map and evict expired entries on
+  // each issue to bound memory under nonce-spam from an unauthenticated
+  // attacker. 1024 is well above any legitimate concurrency on a single
+  // operator UI process.
+  const now = Date.now();
+  for (const [k, v] of nonces) {
+    if (v.expiresAt < now) nonces.delete(k);
+  }
+  while (nonces.size >= MAX_NONCES) {
+    // Drop the oldest entry (insertion-order Map iteration).
+    const oldest = nonces.keys().next().value;
+    if (oldest === undefined) break;
+    nonces.delete(oldest);
+  }
   nonces.set(nonce, {
     address: address.toLowerCase(),
     message,
-    expiresAt: Date.now() + 5 * 60 * 1000,
+    expiresAt: now + 5 * 60 * 1000,
   });
-  return { message, nonce, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() };
+  return { message, nonce, expiresAt: new Date(now + 5 * 60 * 1000).toISOString() };
 }
 
 async function verifyLogin({ address, nonce, signature }) {
