@@ -43,6 +43,13 @@ contract PaxiomOApp is OApp {
         address _endpoint,
         address _owner
     ) OApp(_endpoint, _owner) Ownable(_owner) {
+        // Audit L-07: bootstrap LayerZero options use OptionsType v1
+        // (`uint16(1) | uint256(gas)`). v1 is accepted by every live LZ v2
+        // endpoint; this is a startup default only. Operators migrating to
+        // the v3 byte format build the blob off-chain with the v2
+        // OptionsBuilder (e.g. `OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value)`)
+        // and rotate via `setLzOptions(bytes)` (owner-only, audit M-16).
+        // No protocol feature is gated on v3.
         lzOptions = abi.encodePacked(uint16(1), uint256(200000));
     }
 
