@@ -296,6 +296,11 @@ contract PaxiomPool is OApp, ReentrancyGuard {
         totalRequired      = collateralRequired + protocolFee;
     }
 
+    /// @notice Quote the LayerZero native fee for a `requestLoan` of
+    ///         `loanAmount`. Caller-spammable (audit M-02): `_quote`
+    ///         hits the configured LayerZero endpoint, which can incur
+    ///         RPC cost. Operators MUST rate-limit this read at the
+    ///         gateway / service layer; this contract does not.
     function quoteLzFee(uint256 loanAmount) external view returns (uint256 nativeFee) {
         bytes memory payload = abi.encode(MSG_LOAN_REQUEST, uint256(0), address(0), loanAmount);
         MessagingFee memory fee = _quote(
