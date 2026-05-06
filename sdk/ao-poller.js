@@ -1,6 +1,7 @@
 import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { readFileSync } from 'fs';
 import { createHmac, randomBytes } from 'crypto';
+import { pathToFileURL } from 'url';
 
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
 const EXECUTOR_URL    = 'http://127.0.0.1:7070/signal';
@@ -15,8 +16,17 @@ if (!SIGNAL_HMAC_HEX || Buffer.from(SIGNAL_HMAC_HEX, 'hex').length < 32) {
 }
 const SIGNAL_HMAC_KEY = Buffer.from(SIGNAL_HMAC_HEX, 'hex');
 
-const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
-const signer = createDataItemSigner(wallet);
+// Audit follow-up #102: defer the wallet read so importing this module
+// from a test or analyzer does not require AR_WALLET on disk. The signer
+// is memoized; subsequent calls reuse the same instance.
+let _signer = null;
+function getSigner() {
+  if (!_signer) {
+    const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
+    _signer = createDataItemSigner(wallet);
+  }
+  return _signer;
+}
 
 let lastSignalCount = 0;
 let lastSignalId    = '';
@@ -64,7 +74,7 @@ async function pollAOMonitor() {
     const msgId = await message({
       process: MONITOR_PROCESS,
       tags: [{ name: 'Action', value: 'GetStatus' }],
-      signer
+      signer: getSigner()
     });
 
     const res = await result({ process: MONITOR_PROCESS, message: msgId });
@@ -111,10 +121,20 @@ async function pollAOMonitor() {
   }
 }
 
-console.log('PaxiomAOPoller running');
-console.log(`Monitor: ${MONITOR_PROCESS}`);
-console.log(`Executor: ${EXECUTOR_URL}`);
-console.log(`Wallet: ${AR_WALLET}\n`);
+function main() {
+  console.log('PaxiomAOPoller running');
+  console.log(`Monitor: ${MONITOR_PROCESS}`);
+  console.log(`Executor: ${EXECUTOR_URL}`);
+  console.log(`Wallet: ${AR_WALLET}\n`);
+  setInterval(pollAOMonitor, POLL_INTERVAL);
+  pollAOMonitor();
+}
 
-setInterval(pollAOMonitor, POLL_INTERVAL);
-pollAOMonitor();
+// Audit follow-up #102: only kick off the poll loop when this file is run
+// as a script. Importing it from a test or tooling context returns the
+// module exports without starting timers or logging.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
+
+export { pollAOMonitor, parseOpportunity, getSigner };
