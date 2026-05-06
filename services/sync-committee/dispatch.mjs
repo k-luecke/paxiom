@@ -75,6 +75,14 @@ function harnessDispatch(req, harnessBin) {
 // Fail closed: no real BLS verification ran, so verified=false and mock=true
 // are returned. Downstream consumers that key off payload.verified will see
 // the truth; consumers that key off payload.mock can branch explicitly.
+//
+// Audit M-10: the mock signing_root is sha256 over (slot, block_root,
+// parent_root, bits, signature). Two requests with byte-identical
+// (bits, signature) at the same slot would collide — extremely rare in
+// practice but possible in tests. The real verifier would not collide
+// because it derives the signing_root from the fork domain. Documented
+// rather than addressed: changing the mock shape would mask real-mode
+// regressions in tests that snapshot the digest.
 function mockDispatch(req) {
   const hash = createHash('sha256');
   hash.update(JSON.stringify({

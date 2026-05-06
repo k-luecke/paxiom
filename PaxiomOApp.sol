@@ -96,7 +96,11 @@ contract PaxiomOApp is OApp {
         emit OpportunityReceived(asset, price, spreadBps, buyChain, sellChain, timestamp);
     }
 
-    // Quote the fee for sending a message
+    /// @notice Quote the LayerZero fee for `sendOpportunity`.
+    /// @dev Caller-spammable (audit M-02): `_quote` hits the configured
+    ///      LayerZero endpoint, which can incur RPC cost. Operators
+    ///      MUST rate-limit this read at the gateway; this contract
+    ///      does not.
     function quoteSend(
         uint32 _dstEid,
         string memory _asset,

@@ -1,10 +1,12 @@
 const { runInvariants } = require("./invariants");
 
-// FIX: clone is safe for the current string/number/null state shape.
-// If richer types (bigint, Buffer, Date) ever enter state, replace with
-// a proper structured-clone or immutable update pattern.
+// Audit M-11: switched from JSON.parse(JSON.stringify(...)) to
+// structuredClone (Node 17+) so the reducer survives if richer types
+// (BigInt, Date, Map, Set, ArrayBuffer) ever enter state. JSON-clone
+// silently dropped or corrupted those types -- a footgun for a
+// financial reducer.
 function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 function getBalanceSlot(state, accountId, assetKey) {
