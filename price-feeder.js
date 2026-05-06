@@ -97,7 +97,13 @@ async function fetchPoolPrice(entry) {
     const price = Number(sqrtPriceX96 * sqrtPriceX96 * BigInt(10 ** entry.decimals)) / Number(Q96 * Q96);
     if (price < 0.0001 || price > 10000000) return null;
     return price;
-  } catch(e) { return null; }
+  } catch(e) {
+    // Audit M-09: was silent; sync the log line from sdk/price-feeder.js
+    // so a chain-level outage is visible. Top-level deletion is H-05's
+    // domain.
+    console.log(`[PRICE-FEEDER] Pool fetch failed ${entry.chain}/${entry.asset}: ${e.message.slice(0, 60)}`);
+    return null;
+  }
 }
 
 function calcProfit(spreadPct, loanSize) {
