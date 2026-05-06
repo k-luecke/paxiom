@@ -206,7 +206,22 @@ async function fetchPoolPrice(entry) {
     });
     const json = await res.json();
     if (!json.result || json.result === '0x') return null;
-    const sqrtPriceX96 = BigInt('0x' + json.result.slice(2, 66));
+    // Audit M-08: slot0 returns
+    //   (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex,
+    //    uint16 observationCardinality, uint16 observationCardinalityNext,
+    //    uint8 feeProtocol, bool unlocked)
+    // ABI-encoded — each value padded to a 32-byte word. sqrtPriceX96 is
+    // 20 bytes, padded with 12 leading zeros in the first word. Validate
+    // those padding bytes ARE zero before decoding; if Uniswap V4 (or any
+    // future ABI) packs something else into the high 12 bytes, fail loud
+    // rather than silently mis-quote the pool.
+    if (json.result.length < 2 + 64) return null;
+    const firstWord = json.result.slice(2, 66);
+    if (BigInt('0x' + firstWord.slice(0, 24)) !== 0n) {
+      console.log(`[PRICE-FEEDER] slot0 ABI-changed for ${entry.chain}/${entry.asset}: first-word padding non-zero`);
+      return null;
+    }
+    const sqrtPriceX96 = BigInt('0x' + firstWord.slice(24));
     const Q96 = BigInt(2) ** BigInt(96);
     const price = Number(sqrtPriceX96 * sqrtPriceX96 * BigInt(10 ** entry.decimals)) / Number(Q96 * Q96);
     if (price < 0.0001 || price > 10000000) return null;
