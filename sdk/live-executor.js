@@ -1,9 +1,9 @@
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { createServer } from 'http';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { createWalletClient, createPublicClient, http, parseEther, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
+import { loadSignalHmacKey, verifySignal, createSignalState } from './signal-hmac.mjs';
 
 const LOG_FILE       = '/home/mk19/paxiom/opportunities.log';
 const EXEC_LOG       = '/home/mk19/paxiom/execution.log';
@@ -12,7 +12,7 @@ const CHECK_INTERVAL = 15000;
 const COOLDOWN_MS    = 60000;
 const HTTP_PORT      = 7070;
 
-// ─── chain config ────────────────────────────────────────────
+// ─── chain config ──────────────────────────────────
 // Set MAINNET = true when wallet is funded and ready for live trading
 const MAINNET = false;
 
@@ -131,38 +131,18 @@ const ERC20_ABI = [
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 if (!PRIVATE_KEY) { console.error('ERROR: PRIVATE_KEY not set'); process.exit(1); }
 
-const SIGNAL_HMAC_HEX = process.env.PAXIOM_EXEC_SIGNAL_HMAC_KEY;
-if (!SIGNAL_HMAC_HEX || Buffer.from(SIGNAL_HMAC_HEX, 'hex').length < 32) {
-  console.error('ERROR: PAXIOM_EXEC_SIGNAL_HMAC_KEY required (>=32 bytes hex). ' +
+// Audit follow-up #104: HMAC key load is delegated to sdk/signal-hmac.mjs
+// so the same validator is exercised by unit tests. Wrap the throw to
+// preserve the operator-friendly process.exit(1) message from PR #103.
+let SIGNAL_HMAC_KEY;
+try {
+  SIGNAL_HMAC_KEY = loadSignalHmacKey();
+} catch (e) {
+  console.error(`ERROR: ${e.message}. ` +
     'Generate: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
   process.exit(1);
 }
-const SIGNAL_HMAC_KEY = Buffer.from(SIGNAL_HMAC_HEX, 'hex');
-const SIGNAL_TS_WINDOW_MS = 30_000;
-const SIGNAL_RATE_PER_MIN = 30;
-const seenNonces = new Map();
-let signalBucket = { count: 0, windowStart: Date.now() };
-
-function verifySignal(req, raw) {
-  const now = Date.now();
-  if (now - signalBucket.windowStart > 60_000) signalBucket = { count: 0, windowStart: now };
-  if (++signalBucket.count > SIGNAL_RATE_PER_MIN) return 'rate-limited';
-  const ts = req.headers['x-paxiom-signal-ts'];
-  const nonce = req.headers['x-paxiom-signal-nonce'];
-  const sig = req.headers['x-paxiom-signal-hmac'];
-  if (!ts || !nonce || !sig) return 'missing-headers';
-  if (Math.abs(now - Number(ts)) > SIGNAL_TS_WINDOW_MS) return 'stale-timestamp';
-  for (const [n, exp] of seenNonces) if (exp < now) seenNonces.delete(n);
-  if (seenNonces.has(nonce)) return 'replay';
-  if (seenNonces.size >= 10_000) return 'nonce-cap';
-  let given;
-  try { given = Buffer.from(sig, 'hex'); } catch { return 'bad-sig-hex'; }
-  const expected = createHmac('sha256', SIGNAL_HMAC_KEY)
-    .update(`${ts}.${nonce}.${raw}`).digest();
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return 'bad-sig';
-  seenNonces.set(nonce, now + SIGNAL_TS_WINDOW_MS);
-  return null;
-}
+const signalState = createSignalState();
 
 const account    = privateKeyToAccount(`0x${PRIVATE_KEY.replace('0x','')}`);
 import { optimism, arbitrum, base } from 'viem/chains';
@@ -178,7 +158,7 @@ const publicOp   = createPublicClient({ chain: opChain,            transport: ht
 const publicBase = createPublicClient({ chain: baseChain,          transport: http(RPCS.base) });
 const publicArb  = createPublicClient({ chain: arbChain,           transport: http(RPCS.arbitrum) });
 
-// ─── FIX: centralised chain-to-client helpers ────────────────
+// ─── FIX: centralised chain-to-client helpers ────────────
 // Single source of truth — no scattered ternary fallbacks.
 function walletForChain(chainName) {
   if (chainName === 'optimism') return walletOp;
@@ -193,7 +173,7 @@ function publicForChain(chainName) {
   if (chainName === 'arbitrum') return publicArb;
   throw new Error(`Unknown chain for public client: ${chainName}`);
 }
-// ─────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────
 
 let lastSignalId = '';
 // Audit M-17: lastExecTime is persisted to disk so the 60s cooldown
@@ -308,7 +288,7 @@ async function executeLive(opp, source = 'POLL') {
     const buyWallet  = walletForChain(buyChainName);
     const sellWallet = walletForChain(sellChainName);
     const buyPublic  = publicForChain(buyChainName);
-    // ─────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────
 
     // Check USDC balance on buy side
     const usdcBal = await buyPublic.readContract({
@@ -359,7 +339,7 @@ async function executeLive(opp, source = 'POLL') {
       return false;
     }
     console.log(`[QUOTE] Profitable — proceeding with execution`);
-    // ─────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────
 
     const t0 = Date.now();
 
@@ -398,7 +378,7 @@ async function executeLive(opp, source = 'POLL') {
                amountOutMinimum: 0n,
                sqrtPriceLimitX96: 0n }]
     });
-    // ─────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────
 
     // Fire both swaps simultaneously
     const [chainAHash, chainBHash] = await Promise.all([
@@ -449,7 +429,7 @@ const server = createServer(async (req, res) => {
     req.on('data', d => body += d);
     req.on('end', async () => {
       try {
-        const reject = verifySignal(req, body);
+        const reject = verifySignal({ headers: req.headers, raw: body, key: SIGNAL_HMAC_KEY, state: signalState });
         if (reject) {
           console.warn(`[SIGNAL DENY] ${reject} from ${req.socket.remoteAddress}`);
           res.writeHead(401); res.end(JSON.stringify({ error: reject })); return;

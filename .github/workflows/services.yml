@@ -28,3 +28,6 @@ jobs:
 
       - name: Load network reconstruction tests (fixture)
         run: npm run test:load-network
+
+      - name: SDK signal HMAC unit tests
+        run: npm run test:sdk
