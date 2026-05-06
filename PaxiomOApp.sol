@@ -33,10 +33,24 @@ contract PaxiomOApp is OApp {
         uint256 spreadBps
     );
 
+    /// @notice Owner-settable LayerZero options blob (audit M-16). Was
+    ///         hardcoded at two sites; centralised here so destination
+    ///         gas can be raised without a redeploy.
+    bytes public lzOptions;
+    event LzOptionsUpdated(bytes opts);
+
     constructor(
         address _endpoint,
         address _owner
-    ) OApp(_endpoint, _owner) Ownable(_owner) {}
+    ) OApp(_endpoint, _owner) Ownable(_owner) {
+        lzOptions = abi.encodePacked(uint16(1), uint256(200000));
+    }
+
+    function setLzOptions(bytes calldata _opts) external onlyOwner {
+        require(_opts.length > 0, "Empty options");
+        lzOptions = _opts;
+        emit LzOptionsUpdated(_opts);
+    }
 
     // Send opportunity data to another chain
     function sendOpportunity(
@@ -59,7 +73,7 @@ contract PaxiomOApp is OApp {
         _lzSend(
             _dstEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)), // options
+            lzOptions, // options
             MessagingFee(msg.value, 0),
             payable(msg.sender)
         );
@@ -121,7 +135,7 @@ contract PaxiomOApp is OApp {
         MessagingFee memory fee = _quote(
             _dstEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             false
         );
 
