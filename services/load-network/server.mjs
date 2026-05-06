@@ -1,11 +1,9 @@
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { LoadNetworkClient } from '../../load-network/client.mjs';
 import { reconstructAccountState, reconstructStorageSlot } from '../../load-network/reconstruct.mjs';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
 import { requirePayment, paymentResponseHeaders } from '../shared/x402.mjs';
+import { fixtureFetch } from './fixture-client.mjs';
 
 const PORT = Number(process.env.LOAD_NETWORK_SERVICE_PORT || 8081);
 const HOST = process.env.LOAD_NETWORK_SERVICE_HOST || '127.0.0.1';
@@ -76,38 +74,10 @@ function errorStatus(e) {
   return 502;
 }
 
-function fixtureFetch() {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const fixturesDir = resolve(here, '..', '..', 'load-network', 'fixtures');
-  const manifest = readFixture(fixturesDir, 'MANIFEST.json');
-  return async (rawUrl) => {
-    const url = new URL(rawUrl);
-    if (url.pathname === `/v1/blocks/${manifest.block_number}`) {
-      return jsonResponse(readFixture(fixturesDir, `block_${manifest.block_number}.json`));
-    }
-    if (url.pathname === `/v1/state/${manifest.block_number}/account/${manifest.anchor_address}`) {
-      return jsonResponse(readFixture(fixturesDir, `account_${manifest.block_number}_weth.json`));
-    }
-    if (url.pathname === `/v1/state/${manifest.block_number}/storage/${manifest.anchor_address}/${manifest.anchor_slot}`) {
-      return jsonResponse(readFixture(fixturesDir, `storage_${manifest.block_number}_weth_slot0.json`));
-    }
-    return { ok: false, status: 404, headers: new Map(), text: async () => 'fixture not found' };
-  };
-}
-
-function readFixture(dir, name) {
-  return JSON.parse(readFileSync(resolve(dir, name), 'utf8'));
-}
-
-function jsonResponse(body) {
-  return {
-    ok: true,
-    status: 200,
-    headers: new Map(),
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  };
-}
+// Audit M-05 / M-14: fixtureFetch was duplicated here and in
+// services/load-network/fixture-client.mjs. Consolidated to the
+// shared module; this duplicate plus its readFixture/jsonResponse
+// helpers (now imported transitively) are removed.
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   createApp().listen(PORT, HOST, () => {
