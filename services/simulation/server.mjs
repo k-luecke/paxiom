@@ -26,7 +26,11 @@ async function handleSimulation(req, res, resource) {
     const envelope = createServiceEnvelope({
       service: 'A-204',
       serviceName: 'Simulation as a Service',
-      artifactType: 'simulation_receipt',
+      // Audit M-13: the reference simulator always returns success=true
+      // (no actual EVM execution). Renamed from 'simulation_receipt' to
+      // 'simulation_request_receipt' to make the gap explicit until a
+      // real anvil/tenderly fork executor is plugged in.
+      artifactType: 'simulation_request_receipt',
       payload: receipt,
       payment: paid.payment,
       audit: {
