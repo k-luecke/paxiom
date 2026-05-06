@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { setupResponseSigningKey } from '../../shared/test/sign-test-helper.mjs';
 import { createApp } from '../server.mjs';
+
+setupResponseSigningKey();
 
 function listen(app) {
   return new Promise((resolve) => {
@@ -26,7 +29,7 @@ test('A-203 returns a cross-chain message evidence attestation packet', async ()
     assert.equal(resp.status, 200);
     const body = await resp.json();
     assert.equal(body.service, 'A-203');
-    assert.equal(body.artifact.type, 'cross_chain_message_attestation');
+    assert.equal(body.artifact.type, 'cross_chain_message_evidence_request');
     assert.equal(body.artifact.payload.status, 'reference_evidence_packet');
     assert.equal(body.artifact.payload.verified, false);
   } finally {

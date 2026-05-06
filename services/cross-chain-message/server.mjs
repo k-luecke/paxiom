@@ -26,7 +26,10 @@ async function handleVerify(req, res, resource) {
     const envelope = createServiceEnvelope({
       service: 'A-203',
       serviceName: 'Cross-Chain Message Verification',
-      artifactType: 'cross_chain_message_attestation',
+      // Audit M-12: artifact name made explicit. The verifier returns
+      // verified=false until the bridge-grade source/target proof
+      // integration lands; "attestation" oversold the shape.
+      artifactType: 'cross_chain_message_evidence_request',
       payload: attestation,
       payment: paid.payment,
       audit: {
