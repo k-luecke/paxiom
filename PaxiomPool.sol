@@ -47,6 +47,11 @@ contract PaxiomPool is OApp, ReentrancyGuard {
     address public protocolTreasury;
     uint32  public peerEid;
     bytes32 public trustedPeer;
+    // Audit M-16: LayerZero options blob (uint16 type | uint256 gas) was
+    // hardcoded with type=1 / gas=200000. Now owner-set via setLzOptions
+    // so operators can raise the destination gas if the receive handler
+    // grows. Initialised in the constructor.
+    bytes public lzOptions;
 
     uint256 public totalLiquidity;
     uint256 public totalFees;
@@ -86,6 +91,7 @@ contract PaxiomPool is OApp, ReentrancyGuard {
     event TreasuryUpdated(address indexed previous, address indexed current);
     event TreasuryProposalCancelled(address indexed treasury);
     event PeerEidUpdated(uint32 indexed previous, uint32 indexed current);
+    event LzOptionsUpdated(bytes opts);
 
     // ─── constructor ─────────────────────────────────────────────
     constructor(
@@ -97,6 +103,18 @@ contract PaxiomPool is OApp, ReentrancyGuard {
         USDC             = _usdc;
         protocolTreasury = _owner;
         peerEid          = _peerEid;
+        // Audit M-16: default LayerZero options (type 1, 200_000 gas) at
+        // construction; operators can raise via setLzOptions.
+        lzOptions        = abi.encodePacked(uint16(1), uint256(200000));
+    }
+
+    /// @notice Update the LayerZero options blob used by `_lzSend` and
+    ///         `_quote` paths (audit M-16). Operators MUST verify the
+    ///         destination handler's gas requirement before lowering.
+    function setLzOptions(bytes calldata _opts) external onlyOwner {
+        require(_opts.length > 0, "Empty options");
+        lzOptions = _opts;
+        emit LzOptionsUpdated(_opts);
     }
 
     // ─── liquidity provider functions ────────────────────────────
@@ -186,7 +204,7 @@ contract PaxiomPool is OApp, ReentrancyGuard {
         _lzSend(
             peerEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             MessagingFee({ nativeFee: msg.value, lzTokenFee: 0 }),
             payable(msg.sender)
         );
@@ -306,7 +324,7 @@ contract PaxiomPool is OApp, ReentrancyGuard {
         MessagingFee memory fee = _quote(
             peerEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             false
         );
         return fee.nativeFee;
