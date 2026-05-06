@@ -1,4 +1,4 @@
-import { readFileSync, appendFileSync } from 'fs';
+import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { createServer } from 'http';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createWalletClient, createPublicClient, http, parseEther, encodeFunctionData } from 'viem';
@@ -15,6 +15,12 @@ const HTTP_PORT      = 7070;
 // ─── chain config ────────────────────────────────────────────
 // Set MAINNET = true when wallet is funded and ready for live trading
 const MAINNET = false;
+
+// Audit M-07: Uniswap V3 fee tier was hardcoded at 4 sites. Centralised
+// here to one constant. The 0.05% tier is correct for canonical USDC/WETH
+// pools on Optimism / Arbitrum / Base. Multi-tier selection (try 100 /
+// 500 / 3000 / 10000 and pick the best quote) is filed as follow-up.
+const UNISWAP_V3_FEE_BPS = 500;
 
 const CHAIN_CONFIG = MAINNET ? {
   // Mainnet addresses
@@ -190,7 +196,28 @@ function publicForChain(chainName) {
 // ─────────────────────────────────────────────────────────────
 
 let lastSignalId = '';
-let lastExecTime = 0;
+// Audit M-17: lastExecTime is persisted to disk so the 60s cooldown
+// survives daemon restarts. Without persistence a crash-loop or
+// operator restart resets the cooldown to 0 and could fire many
+// transactions back-to-back.
+const COOLDOWN_STATE_FILE = process.env.PAXIOM_EXEC_COOLDOWN_STATE
+  || `${process.env.HOME || '.'}/.paxiom-exec-cooldown.json`;
+let lastExecTime = (() => {
+  try {
+    const raw = readFileSync(COOLDOWN_STATE_FILE, 'utf8');
+    const t = JSON.parse(raw).lastExecTime;
+    return typeof t === 'number' && t > 0 ? t : 0;
+  } catch {
+    return 0;
+  }
+})();
+function persistLastExecTime(t) {
+  try {
+    writeFileSync(COOLDOWN_STATE_FILE, JSON.stringify({ lastExecTime: t }), { mode: 0o600 });
+  } catch (e) {
+    console.log(`[COOLDOWN] persist failed: ${e.message.slice(0, 80)}`);
+  }
+}
 let execCount    = 0;
 let isExecuting  = false;
 
@@ -229,7 +256,7 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
       address: buyQuoterAddr, abi: QUOTER_ABI,
       functionName: 'quoteExactInputSingle',
       args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
-               amountIn: tradeUsdc, fee: 500, sqrtPriceLimitX96: 0n }]
+               amountIn: tradeUsdc, fee: UNISWAP_V3_FEE_BPS, sqrtPriceLimitX96: 0n }]
     });
 
     const wethOut = buyQuote.result[0];
@@ -238,7 +265,7 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
       address: sellQuoterAddr, abi: QUOTER_ABI,
       functionName: 'quoteExactInputSingle',
       args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
-               amountIn: wethOut, fee: 500, sqrtPriceLimitX96: 0n }]
+               amountIn: wethOut, fee: UNISWAP_V3_FEE_BPS, sqrtPriceLimitX96: 0n }]
     });
 
     const usdcIn    = Number(tradeUsdc) / 1e6;
@@ -299,7 +326,7 @@ async function executeLive(opp, source = 'POLL') {
     const buyCalldata = encodeFunctionData({
       abi: SWAP_ABI, functionName: 'exactInputSingle',
       args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
-               fee: 500, recipient: account.address,
+               fee: UNISWAP_V3_FEE_BPS, recipient: account.address,
                amountIn: TRADE_USDC, amountOutMinimum: 0n,
                sqrtPriceLimitX96: 0n }]
     });
@@ -319,6 +346,7 @@ async function executeLive(opp, source = 'POLL') {
     if (!quote) {
       console.log('[SKIP] Quote unavailable — aborting execution (fail closed)');
       lastExecTime = Date.now();
+    persistLastExecTime(lastExecTime);
       isExecuting = false;
       return false;
     }
@@ -326,6 +354,7 @@ async function executeLive(opp, source = 'POLL') {
     if (quote.netProfit <= 0) {
       console.log(`[SKIP] Real spread negative after price impact — not profitable, skipping`);
       lastExecTime = Date.now();
+    persistLastExecTime(lastExecTime);
       isExecuting = false;
       return false;
     }
@@ -335,17 +364,20 @@ async function executeLive(opp, source = 'POLL') {
     const t0 = Date.now();
 
     // Step 1 — approve on buy side (must precede swap)
-    const approveNonce = await buyPublic.getTransactionCount({ address: account.address });
+    // Audit M-06: blockTag: 'pending' so a freshly-broadcast in-flight tx
+    // is reflected in the count and the next sendTransaction doesn't
+    // collide with "nonce too low".
+    const approveNonce = await buyPublic.getTransactionCount({ address: account.address, blockTag: 'pending' });
     const approveHash = await buyWallet.sendTransaction({
       to: buyCfg.usdc, data: approveCalldata, gas: 60000n, nonce: approveNonce
     });
     await buyPublic.waitForTransactionReceipt({ hash: approveHash, timeout: 30000 });
 
-    // Step 2 — fetch fresh nonces after approve
+    // Step 2 — fetch fresh nonces after approve (blockTag: 'pending' per M-06)
     const [freshNonceOp, freshNonceBase, freshNonceArb] = await Promise.all([
-      publicOp.getTransactionCount({ address: account.address }),
-      publicBase.getTransactionCount({ address: account.address }),
-      publicArb.getTransactionCount({ address: account.address }),
+      publicOp.getTransactionCount({ address: account.address, blockTag: 'pending' }),
+      publicBase.getTransactionCount({ address: account.address, blockTag: 'pending' }),
+      publicArb.getTransactionCount({ address: account.address, blockTag: 'pending' }),
     ]);
 
     const buyNonce  = buyChainName === 'optimism'  ? freshNonceOp
@@ -361,7 +393,7 @@ async function executeLive(opp, source = 'POLL') {
     const sellCalldata = encodeFunctionData({
       abi: SWAP_ABI, functionName: 'exactInputSingle',
       args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
-               fee: 500, recipient: account.address,
+               fee: UNISWAP_V3_FEE_BPS, recipient: account.address,
                amountIn: quote.wethOut,
                amountOutMinimum: 0n,
                sqrtPriceLimitX96: 0n }]
@@ -381,6 +413,7 @@ async function executeLive(opp, source = 'POLL') {
     ]);
     const timingGapMs = Date.now() - t0;
     lastExecTime = Date.now();
+    persistLastExecTime(lastExecTime);
     const opEtherscan  = process.env.MAINNET === 'true' ? 'https://optimistic.etherscan.io'  : 'https://sepolia-optimism.etherscan.io';
     const baseScan     = process.env.MAINNET === 'true' ? 'https://basescan.org'             : 'https://sepolia.basescan.org';
     console.log(`OP:   ${opEtherscan}/tx/${chainAHash}`);
@@ -403,6 +436,7 @@ async function executeLive(opp, source = 'POLL') {
       chainATxHash: `ERROR: ${e.message.slice(0, 80)}`,
       chainBTxHash: 'not reached', timingGapMs: 0, status: 'error', estimatedProfit: 0 });
     lastExecTime = Date.now();
+    persistLastExecTime(lastExecTime);
     return false;
   } finally {
     isExecuting = false;
