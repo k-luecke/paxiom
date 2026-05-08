@@ -28,18 +28,34 @@ recomputed decision.
 
 ## Available fixtures
 
+### `fixture-proof-verifier-v0` (kind `canonical-json-sha256-v0`)
+
 | fixture_id              | recomputed decision | purpose                            |
 |-------------------------|---------------------|------------------------------------|
 | `fp-v0-canonical-pass`  | `pass`              | recompute matches expected hash    |
 | `fp-v0-canonical-fail`  | `fail`              | expected hash intentionally bad    |
 
+### `ethereum-header-fixture-verifier-v0` (kind `ethereum-block-header-v0`)
+
+| fixture_id                 | declared block_hash matches recompute? | purpose                                                  |
+|----------------------------|----------------------------------------|----------------------------------------------------------|
+| `eth-header-v0-good`       | yes                                    | well-formed 15-field header                              |
+| `eth-header-v0-tampered`   | no (first nibble flipped)              | exercise mismatch path; verifier authority is recompute  |
+
+The fixtures store the 15 classic-format header fields as hex. The
+`block_hash` is computed at generation time as
+`keccak256(rlp(header))` using `@ethereumjs/rlp` plus
+`ethereum-cryptography/keccak`, so the good fixture is correct by
+construction.
+
 ## Regenerating
 
 ```bash
-node services/local-verifier/fixtures/make.mjs
+node services/local-verifier/fixtures/make.mjs                  # canonical-json fixtures
+node services/local-verifier/fixtures/make-ethereum-header.mjs  # eth-header fixtures
 ```
 
-The generator and the resulting JSON are both checked in.
+Both generators and the resulting JSON are checked in.
 
 ## Not in scope here
 

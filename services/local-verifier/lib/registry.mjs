@@ -13,6 +13,7 @@
 import * as demo from './verifier.mjs';
 import * as signatureV0 from './verifiers/signature.mjs';
 import * as fixtureProofV0 from './verifiers/fixture-proof.mjs';
+import * as ethereumHeaderV0 from './verifiers/ethereum-header.mjs';
 
 export const DEFAULT_VERIFIER_ID = demo.VERIFIER_NAME;
 
@@ -34,6 +35,12 @@ const ENTRIES = [
     name: fixtureProofV0.VERIFIER_NAME,
     version: fixtureProofV0.VERIFIER_VERSION,
     verify: fixtureProofV0.verify,
+  },
+  {
+    id: ethereumHeaderV0.VERIFIER_NAME,
+    name: ethereumHeaderV0.VERIFIER_NAME,
+    version: ethereumHeaderV0.VERIFIER_VERSION,
+    verify: ethereumHeaderV0.verify,
   },
 ];
 

@@ -1,0 +1,24 @@
+{
+  "fixture_id": "eth-header-v0-good",
+  "fixture_kind": "ethereum-block-header-v0",
+  "description": "Static MVP fixture: hand-built 15-field Ethereum-spec header (pre-EIP-1559 classic format). block_hash is keccak256(rlp(header)) computed at fixture generation time. Not from any real chain.",
+  "header": {
+    "parent_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ommers_hash": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+    "coinbase": "0x0000000000000000000000000000000000000000",
+    "state_root": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "transactions_root": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+    "receipts_root": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+    "logs_bloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "difficulty": "0x0",
+    "number": "0x10",
+    "gas_limit": "0x1c9c380",
+    "gas_used": "0x0",
+    "timestamp": "0x65b1c100",
+    "extra_data": "0x",
+    "mix_hash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "nonce": "0x0000000000000000"
+  },
+  "block_hash": "0x2c5a7c25957c9dea91049689b2bc8ab0beec223c957e353c3b06cc847c2a7930",
+  "note": "Static MVP fixture. Deterministic. No live chain claim. Regenerate via services/local-verifier/fixtures/make-ethereum-header.mjs."
+}
