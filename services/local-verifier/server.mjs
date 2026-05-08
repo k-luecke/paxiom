@@ -12,11 +12,11 @@
 
 import { createServer } from 'node:http';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
-import { verify as verifyDemo, VERIFIER_NAME, VERIFIER_VERSION } from './lib/verifier.mjs';
 import { buildReceipt, signReceipt, verifyReceiptSignature, SERVICE_NAME } from './lib/receipt.mjs';
 import { createStore } from './lib/store.mjs';
 import { loadOrCreateKeypair } from './lib/keys.mjs';
 import { resolveDataDir, resolveKeyPaths } from './lib/paths.mjs';
+import { getVerifier, listVerifiers, resolveVerifierId, DEFAULT_VERIFIER_ID } from './lib/registry.mjs';
 
 const REPLAY_COMMAND_TEMPLATE = 'node services/local-verifier/scripts/replay.mjs {receipt_id}';
 
@@ -28,13 +28,19 @@ export function createApp({ dataDir = resolveDataDir() } = {}) {
   const handleHealth = (res) => sendJson(res, 200, {
     ok: true,
     service: SERVICE_NAME,
-    verifier: { name: VERIFIER_NAME, version: VERIFIER_VERSION },
+    default_verifier: DEFAULT_VERIFIER_ID,
+    verifiers: listVerifiers(),
     data_dir: dataDir,
   });
 
   const handlePubkey = (res) => sendJson(res, 200, {
     algorithm: 'ed25519',
     public_key_pem: keypair.publicPem,
+  });
+
+  const handleListVerifiers = (res) => sendJson(res, 200, {
+    default: DEFAULT_VERIFIER_ID,
+    verifiers: listVerifiers(),
   });
 
   async function handleVerify(req, res) {
@@ -45,13 +51,24 @@ export function createApp({ dataDir = resolveDataDir() } = {}) {
     } catch (e) {
       return sendJson(res, 400, { error: 'invalid json', detail: String(e) });
     }
-    const result = verifyDemo(body);
+
+    const verifierId = resolveVerifierId(body);
+    const entry = getVerifier(verifierId);
+    if (!entry) {
+      return sendJson(res, 400, {
+        error: 'unknown verifier',
+        verifier: verifierId,
+        available: listVerifiers().map((v) => v.id),
+      });
+    }
+
+    const result = entry.verify(body);
     if (result.invalid) {
       return sendJson(res, 400, { error: 'invalid request', detail: result.reason });
     }
     const core = buildReceipt({
-      verifierName: VERIFIER_NAME,
-      verifierVersion: VERIFIER_VERSION,
+      verifierName: entry.name,
+      verifierVersion: entry.version,
       decision: result.decision,
       reason: result.reason,
       inputHash: result.input_hash,
@@ -93,6 +110,7 @@ export function createApp({ dataDir = resolveDataDir() } = {}) {
     if (pathname === '/health') return sendJson(res, 200, { ok: true });
     if (pathname === '/healthz') return handleHealth(res);
     if (pathname === '/pubkey') return handlePubkey(res);
+    if (pathname === '/verifiers') return handleListVerifiers(res);
     if (pathname === '/verify') return handleVerify(req, res);
 
     const receiptMatch = pathname.match(/^\/receipts\/([A-Za-z0-9_-]+)$/);
@@ -121,6 +139,8 @@ if (isMain) {
     console.log('  GET  /receipts/:id');
     console.log('  GET  /replay/:id');
     console.log('  GET  /pubkey');
-    console.log('demo verifier: demo-verifier-v0 (sha256 hash claim check)');
+    console.log('  GET  /verifiers');
+    console.log(`default verifier: ${DEFAULT_VERIFIER_ID}`);
+    for (const v of listVerifiers()) console.log(`  - ${v.id} (v${v.version})`);
   });
 }
