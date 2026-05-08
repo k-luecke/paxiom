@@ -21,6 +21,7 @@ Verifiers are added **beside** the registry, never on top of each other.
 | `fixture-proof-verifier-v0`              | 0.1.0   | `{ fixture_id, claimed_result: "pass" \| "fail" }`                 | `fixture_valid` / `fixture_mismatch` / `fixture_not_found` / `malformed_input`   |
 | `ethereum-header-fixture-verifier-v0`    | 0.1.0   | `{ fixture_id, claimed_block_hash: "0x..." }`                      | `ethereum_header_valid` / `ethereum_header_mismatch` / `fixture_not_found` / `malformed_input` / `unsupported_fixture` |
 | `ethereum-mpt-fixture-verifier-v0`       | 0.1.0   | account: `{ fixture_id, proof_type: "account", claimed_state_root, claimed_account_address }` <br> storage: `{ fixture_id, proof_type: "storage", claimed_storage_root, claimed_account_address, claimed_storage_slot, claimed_storage_value }` | `mpt_account_proof_valid` / `mpt_storage_proof_valid` / `mpt_proof_invalid` / `state_root_mismatch` / `fixture_not_found` / `malformed_input` / `unsupported_fixture` |
+| `sync-committee-fixture-verifier-v0`     | 0.1.0   | `{ fixture_id, claimed_header_root, claimed_participation }` | `sync_committee_valid` / `sync_committee_invalid` / `header_root_mismatch` / `participation_mismatch` / `fixture_not_found` / `malformed_input` / `unsupported_fixture` <br> *(`signature_invalid` is reserved for `v1`; v0 does not verify the BLS aggregate signature)* |
 
 `GET /verifiers` lists what's registered. The default verifier (when the
 request body omits `verifier`) is `demo-verifier-v0` — that backward-compat
@@ -64,8 +65,9 @@ npm run verify:signature-demo          # signature-verifier-v0 end-to-end demo
 npm run verify:fixture-demo            # fixture-proof-verifier-v0 end-to-end demo
 npm run verify:ethereum-header-demo    # ethereum-header-fixture-verifier-v0 end-to-end demo
 npm run verify:ethereum-mpt-demo       # ethereum-mpt-fixture-verifier-v0 end-to-end demo (account + storage)
+npm run verify:sync-committee-demo     # sync-committee-fixture-verifier-v0 end-to-end demo (no BLS aggregate in v0)
 npm run replay -- <receipt_id>         # replay any stored receipt
-npm run test:local-verifier            # this slice only (81 tests)
+npm run test:local-verifier            # this slice only (101 tests)
 ```
 
 ## Example request: demo-verifier-v0
@@ -196,6 +198,54 @@ has been reached. Those land in subsequent verifiers
 membership, then `live-witness-retrieval-v0` once the no-RPC moat is
 ready to selectively breach).
 
+## Example request: sync-committee-fixture-verifier-v0
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/verify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "verifier": "sync-committee-fixture-verifier-v0",
+    "fixture_id": "sc-v0-period-1041-good",
+    "claimed_header_root": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "claimed_participation": 384
+  }' | jq
+```
+
+The verifier:
+
+1. Loads the fixture from disk (`services/local-verifier/fixtures/<fixture_id>.json`).
+2. Recomputes `domain` from `fork_version` + `genesis_validators_root`
+   per Ethereum SSZ conventions
+   (`compute_domain` in [`bls-verifier/bls-verify-cli/src/main.rs`](../../../bls-verifier/bls-verify-cli/src/main.rs)).
+3. Recomputes `signing_root = sha256(parent_root || domain)` —
+   the exact 32-byte object the BLS aggregate would sign.
+4. Counts `participation` via popcount of `sync_committee_bits`.
+5. Cross-checks recomputed values against `fixture.expected.{domain, signing_root, participation}`.
+6. Compares caller's `claimed_header_root` to `fixture.block_root`.
+7. Compares caller's `claimed_participation` to recomputed participation.
+
+**Fixture-only.** Hand-built fixture; no live beacon chain.
+
+**v0 does NOT verify the BLS aggregate signature.** Every receipt's
+`details.bls_aggregate_verified` is `false`, and every
+`details.bls_verification_note` says so explicitly.
+`fixture.sync_aggregate.sync_committee_signature` is read but not
+validated. Real BLS aggregate verification is the next slice
+(`sync-committee-bls-verifier-v1`); it will either shell out to
+[`bls-verifier/bls-verify-cli`](../../../bls-verifier/bls-verify-cli/)
+(audited Rust, `blst`) or carefully match `@noble/curves/bls12-381`
+to Ethereum's `min_pk` + `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_`
+ciphersuite — and will require beacon-derived fixtures with real
+public keys + aggregate signatures, which currently do not exist in
+the repo (see [`bls-verifier/fixtures/beacon/README.md`](../../../bls-verifier/fixtures/beacon/README.md)).
+
+**No live finality / canonicality claim.** v0 proves the fixture's
+internal SSZ derivation is consistent and that participation meets the
+caller's claim. It does not prove the update is canonical, that the
+sync committee snapshot is the right one for the claimed period, or
+that finality has been reached. Those land in v1 (BLS aggregate) and
+the live retrieval slice.
+
 ## Example receipt: demo-verifier-v0
 
 ```json
@@ -311,6 +361,50 @@ that changed is `verifier_name` and the `reason` vocabulary.
 }
 ```
 
+## Example receipt: sync-committee-fixture-verifier-v0
+
+```json
+{
+  "receipt_id": "11fda83b-...",
+  "timestamp": "2026-05-08T...",
+  "service_name": "paxiom-local-verifier",
+  "verifier_name": "sync-committee-fixture-verifier-v0",
+  "verifier_version": "0.1.0",
+  "input_hash": "...",
+  "output_hash": "...",
+  "decision": "pass",
+  "reason": "sync_committee_valid",
+  "replay_command": "node services/local-verifier/scripts/replay.mjs 11fda83b-...",
+  "prior_receipt_hash": "0x...",
+  "receipt_hash": "0x...",
+  "service_signature": { "algorithm": "ed25519", "key_id": "...", "public_key_pem": "...", "signature": "..." }
+}
+```
+
+`details` block (note the explicit `bls_aggregate_verified: false`):
+
+```json
+{
+  "fixture_id": "sc-v0-period-1041-good",
+  "fixture_kind": "ethereum-sync-committee-update-v0",
+  "slot": "8421376",
+  "fork_version": "0x06000000",
+  "block_root": "0x1111...",
+  "parent_root": "0x2222...",
+  "recomputed": {
+    "domain": "0x07000000...",
+    "signing_root": "0x1a707b9c...",
+    "participation": 384
+  },
+  "expected": { "domain": "0x07000000...", "signing_root": "0x1a707b9c...", "participation": 384 },
+  "fixture_internally_consistent": true,
+  "bls_aggregate_verified": false,
+  "bls_verification_note": "sync-committee-fixture-verifier-v0 does not verify the BLS aggregate signature. ...",
+  "claimed_header_root": "0x1111...",
+  "claimed_participation": 384
+}
+```
+
 ## Example receipt: fixture-proof-verifier-v0
 
 ```json
@@ -377,7 +471,8 @@ services/local-verifier/
 │   │   ├── signature.mjs           # signature-verifier-v0
 │   │   ├── fixture-proof.mjs       # fixture-proof-verifier-v0
 │   │   ├── ethereum-header.mjs     # ethereum-header-fixture-verifier-v0
-│   │   └── ethereum-mpt.mjs        # ethereum-mpt-fixture-verifier-v0 (thin adapter over load-network/verifier.mjs)
+│   │   ├── ethereum-mpt.mjs        # ethereum-mpt-fixture-verifier-v0 (thin adapter over load-network/verifier.mjs)
+│   │   └── sync-committee.mjs      # sync-committee-fixture-verifier-v0 (structural + SSZ; no BLS aggregate yet)
 │   ├── registry.mjs                # verifier dispatch
 │   ├── receipt.mjs                 # build/hash/sign/verify
 │   ├── store.mjs                   # JSONL log + receipts/ dir
@@ -397,13 +492,15 @@ services/local-verifier/
 │   ├── verify-signature-demo.mjs          # signature-verifier-v0 end-to-end
 │   ├── verify-fixture-demo.mjs            # fixture-proof-verifier-v0 end-to-end
 │   ├── verify-ethereum-header-demo.mjs    # ethereum-header verifier end-to-end
-│   └── verify-ethereum-mpt-demo.mjs       # ethereum-mpt verifier end-to-end (account + storage)
+│   ├── verify-ethereum-mpt-demo.mjs       # ethereum-mpt verifier end-to-end (account + storage)
+│   └── verify-sync-committee-demo.mjs     # sync-committee verifier end-to-end (structural; no BLS aggregate)
 ├── test/
 │   ├── server.test.mjs                    # 13 demo + chassis tests
 │   ├── signature.test.mjs                 # 11 registry + signature tests
 │   ├── fixture.test.mjs                   # 16 fixture + cross-verifier regression tests
 │   ├── ethereum-header.test.mjs           # 19 eth-header + cross-verifier regression tests
-│   └── ethereum-mpt.test.mjs              # 22 mpt + cross-verifier regression tests
+│   ├── ethereum-mpt.test.mjs              # 22 mpt + cross-verifier regression tests
+│   └── sync-committee.test.mjs            # 20 sync-committee + cross-verifier regression tests
 └── data/                                  # gitignored: keys, receipts, audit log
 ```
 
@@ -426,22 +523,32 @@ Progression (each is additive, none replaces what came before):
    account / storage proofs against a caller-supplied root using the
    audited walker in [`load-network/verifier.mjs`](../../load-network/verifier.mjs).
    First verifier that exercises Ethereum **state evidence**.
-6. **Next: `sync-committee-fixture-verifier-v0`** — wraps the existing
-   [`services/sync-committee/`](../sync-committee/) scaffold (BLS
-   aggregate verification + sync-committee period math) against a
-   stored sync-committee update fixture. This is the verifier that
-   begins to assert **canonicality**: a header is on the chain Ethereum
-   recognises, not just a header that hashes correctly.
-7. `live-witness-retrieval-v0` — first verifier permitted to fetch
+6. ~~`sync-committee-fixture-verifier-v0`~~ — done. Structural + SSZ
+   `domain`/`signing_root` derivation + participation counting on a
+   hand-built static fixture. **Does not yet verify the BLS aggregate
+   signature** — that's `v1`. SSZ derivation here matches
+   [`bls-verifier/bls-verify-cli/src/main.rs`](../../../bls-verifier/bls-verify-cli/src/main.rs)
+   so v1 can sign over the same `signing_root`.
+7. **Next: `sync-committee-bls-verifier-v1`** — adds real BLS
+   aggregate verification on top of v0's structural verification.
+   Two viable implementations: shell out to the audited Rust
+   `bls-verify-cli` (preferred — already uses `blst` with the right
+   ciphersuite), or carefully match `@noble/curves/bls12-381` to
+   Ethereum's `min_pk` + `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_`
+   ciphersuite. Both require beacon-derived fixtures with real public
+   keys and aggregate signatures, which the repo does not currently
+   have ([`bls-verifier/fixtures/beacon/`](../../../bls-verifier/fixtures/beacon/)
+   contains only a README documenting how to record them).
+8. `live-witness-retrieval-v0` — first verifier permitted to fetch
    from a live source. By the time we get here the chassis has proved
-   it can host header / MPT / sync-committee verification offline,
-   and the live retrieval is the smallest possible breach of the
-   no-network moat.
-8. `service-dispatched-verifier-v0` — AO / HyperBEAM dispatch.
-9. `paid-verifier-v0` — x402 / payment-gated wrapper around any of the above.
+   it can host header / MPT / sync-committee structural + BLS
+   verification offline, and the live retrieval is the smallest
+   possible breach of the no-network moat.
+9. `service-dispatched-verifier-v0` — AO / HyperBEAM dispatch.
+10. `paid-verifier-v0` — x402 / payment-gated wrapper around any of the above.
 
 Building the courtroom before calling the first witness: every verifier
-through `sync-committee-fixture-verifier-v0` is fixture-driven and
+through `sync-committee-bls-verifier-v1` is fixture-driven and
 deterministic. Live network access only enters the chassis after the
 fixture-shaped equivalents prove the contract holds.
 

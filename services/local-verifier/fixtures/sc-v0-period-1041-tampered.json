@@ -1,0 +1,21 @@
+{
+  "fixture_id": "sc-v0-period-1041-tampered",
+  "fixture_kind": "ethereum-sync-committee-update-v0",
+  "description": "Static MVP fixture: same fields as sc-v0-period-1041-good, but expected.signing_root has its first nibble flipped. Verifier recomputes and reports sync_committee_invalid (fixture is internally inconsistent).",
+  "slot": "8421376",
+  "fork_version": "0x06000000",
+  "genesis_validators_root": "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95",
+  "block_root": "0x1111111111111111111111111111111111111111111111111111111111111111",
+  "parent_root": "0x2222222222222222222222222222222222222222222222222222222222222222",
+  "sync_aggregate": {
+    "sync_committee_bits": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000000000000000000000",
+    "sync_committee_signature": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "expected": {
+    "domain": "0x0700000082fae541f8a3db43adb5e7997ac5f562cf682ce6bc41b8ec28ba1a07",
+    "signing_root": "0xea707b9cf26c72f8c8f51a70dd3d6621e3b01292398a568cf883ea79005e724c",
+    "participation": 384
+  },
+  "bls_verification": "not_implemented_in_v0",
+  "note": "Static MVP fixture. Deterministic. No live beacon chain. Regenerate via services/local-verifier/fixtures/make-sync-committee.mjs."
+}
