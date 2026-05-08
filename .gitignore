@@ -27,3 +27,6 @@ hyperbeam/bringup/evidence/
 # audit L-21
 pubkey-cache.json
 paxiom-core-ledger-v1-dev.zip
+
+# local-verifier MVP runtime data
+services/local-verifier/data/

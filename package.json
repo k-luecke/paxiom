@@ -10,12 +10,14 @@
   },
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:sync-committee && npm run test:load-network && npm run test:services && npm run test:ui && npm run test:core",
+    "test": "npm run test:sync-committee && npm run test:load-network && npm run test:services && npm run test:ui && npm run test:core && npm run test:local-verifier",
     "test:core": "node core/test.js",
     "test:sync-committee": "node --test services/sync-committee/test/server.test.mjs",
     "test:load-network": "node --test load-network/test/verifier.test.mjs load-network/test/reconstruct.test.mjs load-network/test/live.test.mjs",
     "test:services": "node --test services/shared/test/x402.test.mjs services/catalog/test/server.test.mjs services/load-network/test/server.test.mjs services/slot-storage-proof/test/server.test.mjs services/historical-state/test/server.test.mjs services/cross-chain-message/test/server.test.mjs services/simulation/test/server.test.mjs services/arb-engine/test/server.test.mjs services/compliance/test/server.test.mjs",
     "test:ui": "node --test ui/test/server.test.mjs",
+    "test:local-verifier": "node --test services/local-verifier/test/server.test.mjs",
+    "dev": "node services/local-verifier/server.mjs",
     "hyperbeam:install": "./hyperbeam/bringup/install.sh",
     "hyperbeam:shell": "./hyperbeam/bringup/shell.sh",
     "hyperbeam:smoke": "./hyperbeam/bringup/smoke-test.sh",
@@ -28,7 +30,10 @@
     "service:load-network": "node services/load-network/server.mjs",
     "service:arb-engine": "node services/arb-engine/server.mjs",
     "service:compliance": "node services/compliance/server.mjs",
-    "service:ui": "node ui/server.js"
+    "service:local-verifier": "node services/local-verifier/server.mjs",
+    "service:ui": "node ui/server.js",
+    "verify:demo": "node services/local-verifier/scripts/verify-demo.mjs",
+    "replay": "node services/local-verifier/scripts/replay.mjs"
   },
   "keywords": ["paxiom", "ao", "hyperbeam", "ethereum", "arweave"],
   "type": "commonjs",

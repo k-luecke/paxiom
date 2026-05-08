@@ -1,5 +1,13 @@
 # Paxiom — Trustless Cross-Chain Verification Infrastructure
 
+> **MVP — Local verifier (start here):** runnable today, no chain
+> dependencies. One narrow vertical slice — request → deterministic
+> verification → signed receipt → replayable audit. See
+> [`services/local-verifier/`](services/local-verifier/).
+> Run `npm run service:local-verifier` and `npm run verify:demo`.
+> Today's verifier is `demo-verifier-v0` (sha256 hash claim check); the
+> receipt loop is the product surface, the verifier itself is replaceable.
+>
 > **Phase 0 substrate:** the HyperBEAM bring-up, the sync-committee
 > HyperBEAM device, and the Load Network state-reconstruction client are
 > scaffolded under [`hyperbeam/`](hyperbeam/), [`services/sync-committee/`](services/sync-committee/),
