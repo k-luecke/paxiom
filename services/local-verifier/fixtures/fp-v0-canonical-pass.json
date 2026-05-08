@@ -1,0 +1,16 @@
+{
+  "fixture_id": "fp-v0-canonical-pass",
+  "fixture_kind": "canonical-json-sha256-v0",
+  "description": "Recomputed canonical-JSON sha256 matches expected_canonical_sha256.",
+  "payload": {
+    "claim": "hello-paxiom",
+    "version": 1,
+    "items": [
+      1,
+      2,
+      3
+    ]
+  },
+  "expected_canonical_sha256": "c29b222b1282263589f256c6642a23963e3f94660b74d582e2a8fbd639a838f2",
+  "note": "Static MVP fixture. Deterministic, no network. Replays sha256 of canonical-JSON of payload and compares to expected_canonical_sha256."
+}

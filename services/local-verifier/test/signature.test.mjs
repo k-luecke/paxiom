@@ -48,15 +48,16 @@ after(() => {
   delete process.env.PAXIOM_LOCAL_VERIFIER_DATA_DIR;
 });
 
-test('GET /verifiers lists demo + signature verifiers; default is demo', async () => {
+test('GET /verifiers includes signature-verifier-v0; default is demo', async () => {
   const resp = await fetch(`${baseUrl}/verifiers`);
   assert.equal(resp.status, 200);
   const body = await resp.json();
   assert.equal(body.default, 'demo-verifier-v0');
   const ids = body.verifiers.map((v) => v.id);
-  assert.deepEqual(ids.sort(), ['demo-verifier-v0', 'signature-verifier-v0']);
+  assert.ok(ids.includes('demo-verifier-v0'));
+  assert.ok(ids.includes('signature-verifier-v0'));
   assert.equal(DEFAULT_VERIFIER_ID, 'demo-verifier-v0');
-  assert.equal(listVerifiers().length, 2);
+  assert.ok(listVerifiers().some((v) => v.id === 'signature-verifier-v0'));
 });
 
 test('signature-verifier-v0: valid ed25519 signature passes and receipt is replayable', async () => {

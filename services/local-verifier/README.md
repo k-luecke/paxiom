@@ -14,10 +14,11 @@ Verifiers are added **beside** the registry, never on top of each other.
 
 ## Verifiers
 
-| id                       | version | input                                                              | reasons                                                                          |
-|--------------------------|---------|--------------------------------------------------------------------|----------------------------------------------------------------------------------|
-| `demo-verifier-v0`       | 0.1.0   | `{ message, claimed_sha256 }`                                      | computed sha256 matches / does not match (permanent regression baseline)         |
-| `signature-verifier-v0`  | 0.1.0   | `{ payload, public_key_pem, signature, algorithm: "ed25519" }`     | `signature_valid` / `signature_invalid` / `unsupported_algorithm` / `malformed_input` |
+| id                            | version | input                                                              | reasons                                                                          |
+|-------------------------------|---------|--------------------------------------------------------------------|----------------------------------------------------------------------------------|
+| `demo-verifier-v0`            | 0.1.0   | `{ message, claimed_sha256 }`                                      | computed sha256 matches / does not match (permanent regression baseline)         |
+| `signature-verifier-v0`       | 0.1.0   | `{ payload, public_key_pem, signature, algorithm: "ed25519" }`     | `signature_valid` / `signature_invalid` / `unsupported_algorithm` / `malformed_input` |
+| `fixture-proof-verifier-v0`   | 0.1.0   | `{ fixture_id, claimed_result: "pass" \| "fail" }`                 | `fixture_valid` / `fixture_mismatch` / `fixture_not_found` / `malformed_input`   |
 
 `GET /verifiers` lists what's registered. The default verifier (when the
 request body omits `verifier`) is `demo-verifier-v0` — that backward-compat
@@ -58,8 +59,9 @@ In another terminal:
 ```bash
 npm run verify:demo                 # demo-verifier-v0 end-to-end demo
 npm run verify:signature-demo       # signature-verifier-v0 end-to-end demo
+npm run verify:fixture-demo         # fixture-proof-verifier-v0 end-to-end demo
 npm run replay -- <receipt_id>      # replay any stored receipt
-npm run test:local-verifier         # this slice only (24 tests)
+npm run test:local-verifier         # this slice only (40 tests)
 ```
 
 ## Example request: demo-verifier-v0
@@ -90,6 +92,25 @@ curl -s -X POST http://127.0.0.1:3000/verify \
 The signature must be over the **canonical-JSON** encoding of `payload`
 (sorted keys, no whitespace) — see `lib/canonical.mjs`. The
 `scripts/verify-signature-demo.mjs` script shows the full flow.
+
+## Example request: fixture-proof-verifier-v0
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"verifier":"fixture-proof-verifier-v0","fixture_id":"fp-v0-canonical-pass","claimed_result":"pass"}' | jq
+```
+
+The verifier loads `services/local-verifier/fixtures/<fixture_id>.json`,
+recomputes the deterministic check declared by the fixture's
+`fixture_kind`, and compares the recomputed decision (`pass` / `fail`)
+to the caller's `claimed_result`.
+
+This is **deterministic fixture verification only**. No live network is
+contacted, no Ethereum / AO / Arweave state is read, and no claim is
+made about chain state. The fixtures are static MVP fixtures, hand-built
+and checked in under
+[`services/local-verifier/fixtures/`](fixtures/).
 
 ## Example receipt: demo-verifier-v0
 
@@ -139,6 +160,44 @@ The signature must be over the **canonical-JSON** encoding of `payload`
 Same fields, same canonical hashing, same replay path. The only thing
 that changed is `verifier_name` and the `reason` vocabulary.
 
+## Example receipt: fixture-proof-verifier-v0
+
+```json
+{
+  "receipt_id": "1dcd9d74-...",
+  "timestamp": "2026-05-08T...",
+  "service_name": "paxiom-local-verifier",
+  "verifier_name": "fixture-proof-verifier-v0",
+  "verifier_version": "0.1.0",
+  "input_hash": "...",
+  "output_hash": "304eb6d7...",
+  "decision": "pass",
+  "reason": "fixture_valid",
+  "replay_command": "node services/local-verifier/scripts/replay.mjs 1dcd9d74-...",
+  "prior_receipt_hash": "0x...",
+  "receipt_hash": "0x304eb6d7...",
+  "service_signature": { "algorithm": "ed25519", "key_id": "...", "public_key_pem": "...", "signature": "..." }
+}
+```
+
+The receipt response also includes a `details` block alongside the
+receipt, with the recomputed evidence:
+
+```json
+{
+  "fixture_id": "fp-v0-canonical-pass",
+  "fixture_kind": "canonical-json-sha256-v0",
+  "fixture_content_sha256": "e716f854...",
+  "recomputed_decision": "pass",
+  "claimed_result": "pass",
+  "recomputed": {
+    "recomputed_canonical_sha256": "c29b222b...",
+    "expected_canonical_sha256": "c29b222b...",
+    "matches": true
+  }
+}
+```
+
 ## Replay
 
 Two ways to replay a receipt:
@@ -159,25 +218,33 @@ holding the receipt and the public key can independently confirm it.
 
 ```
 services/local-verifier/
-├── server.mjs                    # HTTP entrypoint, dispatches via registry
+├── server.mjs                      # HTTP entrypoint, dispatches via registry
 ├── lib/
-│   ├── canonical.mjs             # sorted-key JSON
-│   ├── verifier.mjs              # demo-verifier-v0 (frozen baseline)
+│   ├── canonical.mjs               # sorted-key JSON
+│   ├── verifier.mjs                # demo-verifier-v0 (frozen baseline)
 │   ├── verifiers/
-│   │   └── signature.mjs         # signature-verifier-v0
-│   ├── registry.mjs              # verifier dispatch
-│   ├── receipt.mjs               # build/hash/sign/verify
-│   ├── store.mjs                 # JSONL log + receipts/ dir
-│   ├── keys.mjs                  # ed25519 load-or-generate
-│   └── paths.mjs                 # data dir resolution
+│   │   ├── signature.mjs           # signature-verifier-v0
+│   │   └── fixture-proof.mjs       # fixture-proof-verifier-v0
+│   ├── registry.mjs                # verifier dispatch
+│   ├── receipt.mjs                 # build/hash/sign/verify
+│   ├── store.mjs                   # JSONL log + receipts/ dir
+│   ├── keys.mjs                    # ed25519 load-or-generate
+│   └── paths.mjs                   # data dir resolution
+├── fixtures/                       # static MVP fixtures (checked in)
+│   ├── README.md
+│   ├── make.mjs                    # regenerator
+│   ├── fp-v0-canonical-pass.json
+│   └── fp-v0-canonical-fail.json
 ├── scripts/
-│   ├── replay.mjs                # CLI replay
-│   ├── verify-demo.mjs           # demo-verifier-v0 end-to-end
-│   └── verify-signature-demo.mjs # signature-verifier-v0 end-to-end
+│   ├── replay.mjs                  # CLI replay
+│   ├── verify-demo.mjs             # demo-verifier-v0 end-to-end
+│   ├── verify-signature-demo.mjs   # signature-verifier-v0 end-to-end
+│   └── verify-fixture-demo.mjs     # fixture-proof-verifier-v0 end-to-end
 ├── test/
-│   ├── server.test.mjs           # 13 demo + chassis tests
-│   └── signature.test.mjs        # 11 registry + signature tests
-└── data/                         # gitignored: keys, receipts, audit log
+│   ├── server.test.mjs             # 13 demo + chassis tests
+│   ├── signature.test.mjs          # 11 registry + signature tests
+│   └── fixture.test.mjs            # 16 fixture + cross-verifier regression tests
+└── data/                           # gitignored: keys, receipts, audit log
 ```
 
 ## Next production gates
@@ -190,14 +257,25 @@ Progression (each is additive, none replaces what came before):
 
 1. ~~`demo-verifier-v0`~~ — done. **Permanent regression baseline.** Do not mutate.
 2. ~~`signature-verifier-v0`~~ — done. ed25519 today; secp256k1 / multi-alg later.
-3. **Next: `fixture-proof-verifier-v0`** — replay a stored proof fixture
-   against stored data from this repo (e.g. `load-network/fixtures/`),
-   no network, fully deterministic.
-4. `ethereum-header-verifier-v0` — known header / checkpoint fixture.
-5. `sync-committee-verifier-v0` — wraps existing `services/sync-committee/` scaffold.
-6. `mpt-witness-verifier-v0` — attacks the harder S.03 gate.
+3. ~~`fixture-proof-verifier-v0`~~ — done. Replays static MVP fixtures
+   (`canonical-json-sha256-v0`). No network. Fixture-shape-agnostic
+   dispatch lives in `lib/verifiers/fixture-proof.mjs`.
+4. **Next: `ethereum-header-verifier-v0`** — replays a known Ethereum
+   header / checkpoint fixture from
+   [`load-network/fixtures/`](../../load-network/fixtures/) against a
+   declared expected hash. Still no live RPC.
+5. `sync-committee-fixture-verifier-v0` — wraps the existing
+   `services/sync-committee/` scaffold against a stored sync-committee
+   update fixture.
+6. `mpt-witness-verifier-v0` — attacks the harder S.03 gate using the
+   already-checked-in `account_19000000_weth.json` /
+   `storage_19000000_weth_slot0.json` fixtures.
 7. `service-dispatched-verifier-v0` — AO / HyperBEAM dispatch.
 8. `paid-verifier-v0` — x402 / payment-gated wrapper around any of the above.
+
+Building the courtroom before calling the first witness: live network
+access stays out of the chassis until the fixture-shaped Ethereum and
+sync-committee verifiers prove the contract holds.
 
 The discipline: never change the chassis unless a verifier physically
 forces it.
