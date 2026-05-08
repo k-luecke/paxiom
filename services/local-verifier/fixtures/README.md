@@ -42,6 +42,20 @@ recomputed decision.
 | `eth-header-v0-good`       | yes                                    | well-formed 15-field header                              |
 | `eth-header-v0-tampered`   | no (first nibble flipped)              | exercise mismatch path; verifier authority is recompute  |
 
+### `ethereum-mpt-fixture-verifier-v0`
+
+This verifier reads from
+[`load-network/fixtures/`](../../../load-network/fixtures/), **not** from
+this directory. Those fixtures are synthesised by
+[`synthesise.mjs`](../../../load-network/fixtures/synthesise.mjs) and
+contain real `@ethereumjs/trie` MPT proofs that chain to their declared
+roots. The MPT verifier is a thin adapter over the audited walker in
+[`load-network/verifier.mjs`](../../../load-network/verifier.mjs); we do
+not duplicate fixture data here.
+
+Default fixture dir for the MPT verifier can be overridden with
+`PAXIOM_LOCAL_VERIFIER_MPT_FIXTURE_DIR` (used by tests).
+
 The fixtures store the 15 classic-format header fields as hex. The
 `block_hash` is computed at generation time as
 `keccak256(rlp(header))` using `@ethereumjs/rlp` plus

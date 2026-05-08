@@ -16,7 +16,7 @@
     "test:load-network": "node --test load-network/test/verifier.test.mjs load-network/test/reconstruct.test.mjs load-network/test/live.test.mjs",
     "test:services": "node --test services/shared/test/x402.test.mjs services/catalog/test/server.test.mjs services/load-network/test/server.test.mjs services/slot-storage-proof/test/server.test.mjs services/historical-state/test/server.test.mjs services/cross-chain-message/test/server.test.mjs services/simulation/test/server.test.mjs services/arb-engine/test/server.test.mjs services/compliance/test/server.test.mjs",
     "test:ui": "node --test ui/test/server.test.mjs",
-    "test:local-verifier": "node --test services/local-verifier/test/server.test.mjs services/local-verifier/test/signature.test.mjs services/local-verifier/test/fixture.test.mjs services/local-verifier/test/ethereum-header.test.mjs",
+    "test:local-verifier": "node --test services/local-verifier/test/server.test.mjs services/local-verifier/test/signature.test.mjs services/local-verifier/test/fixture.test.mjs services/local-verifier/test/ethereum-header.test.mjs services/local-verifier/test/ethereum-mpt.test.mjs",
     "dev": "node services/local-verifier/server.mjs",
     "hyperbeam:install": "./hyperbeam/bringup/install.sh",
     "hyperbeam:shell": "./hyperbeam/bringup/shell.sh",
@@ -36,6 +36,7 @@
     "verify:signature-demo": "node services/local-verifier/scripts/verify-signature-demo.mjs",
     "verify:fixture-demo": "node services/local-verifier/scripts/verify-fixture-demo.mjs",
     "verify:ethereum-header-demo": "node services/local-verifier/scripts/verify-ethereum-header-demo.mjs",
+    "verify:ethereum-mpt-demo": "node services/local-verifier/scripts/verify-ethereum-mpt-demo.mjs",
     "replay": "node services/local-verifier/scripts/replay.mjs"
   },
   "keywords": ["paxiom", "ao", "hyperbeam", "ethereum", "arweave"],

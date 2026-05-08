@@ -62,7 +62,7 @@ export function createApp({ dataDir = resolveDataDir() } = {}) {
       });
     }
 
-    const result = entry.verify(body);
+    const result = await entry.verify(body);
     if (result.invalid) {
       return sendJson(res, 400, { error: 'invalid request', detail: result.reason });
     }

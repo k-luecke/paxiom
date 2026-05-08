@@ -49,18 +49,20 @@ after(() => {
   delete process.env.PAXIOM_LOCAL_VERIFIER_DATA_DIR;
 });
 
-test('GET /verifiers lists all four verifiers', async () => {
+test('GET /verifiers includes the four foundational verifiers', async () => {
   const resp = await fetch(`${baseUrl}/verifiers`);
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  const ids = body.verifiers.map((v) => v.id).sort();
-  assert.deepEqual(ids, [
+  const ids = body.verifiers.map((v) => v.id);
+  for (const expected of [
     'demo-verifier-v0',
-    'ethereum-header-fixture-verifier-v0',
-    'fixture-proof-verifier-v0',
     'signature-verifier-v0',
-  ]);
-  assert.equal(listVerifiers().length, 4);
+    'fixture-proof-verifier-v0',
+    'ethereum-header-fixture-verifier-v0',
+  ]) {
+    assert.ok(ids.includes(expected), `missing ${expected}`);
+  }
+  assert.ok(listVerifiers().length >= 4);
 });
 
 test('valid header fixture passes (claim matches recomputed)', async () => {

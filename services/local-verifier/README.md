@@ -20,6 +20,7 @@ Verifiers are added **beside** the registry, never on top of each other.
 | `signature-verifier-v0`                  | 0.1.0   | `{ payload, public_key_pem, signature, algorithm: "ed25519" }`     | `signature_valid` / `signature_invalid` / `unsupported_algorithm` / `malformed_input` |
 | `fixture-proof-verifier-v0`              | 0.1.0   | `{ fixture_id, claimed_result: "pass" \| "fail" }`                 | `fixture_valid` / `fixture_mismatch` / `fixture_not_found` / `malformed_input`   |
 | `ethereum-header-fixture-verifier-v0`    | 0.1.0   | `{ fixture_id, claimed_block_hash: "0x..." }`                      | `ethereum_header_valid` / `ethereum_header_mismatch` / `fixture_not_found` / `malformed_input` / `unsupported_fixture` |
+| `ethereum-mpt-fixture-verifier-v0`       | 0.1.0   | account: `{ fixture_id, proof_type: "account", claimed_state_root, claimed_account_address }` <br> storage: `{ fixture_id, proof_type: "storage", claimed_storage_root, claimed_account_address, claimed_storage_slot, claimed_storage_value }` | `mpt_account_proof_valid` / `mpt_storage_proof_valid` / `mpt_proof_invalid` / `state_root_mismatch` / `fixture_not_found` / `malformed_input` / `unsupported_fixture` |
 
 `GET /verifiers` lists what's registered. The default verifier (when the
 request body omits `verifier`) is `demo-verifier-v0` — that backward-compat
@@ -62,8 +63,9 @@ npm run verify:demo                    # demo-verifier-v0 end-to-end demo
 npm run verify:signature-demo          # signature-verifier-v0 end-to-end demo
 npm run verify:fixture-demo            # fixture-proof-verifier-v0 end-to-end demo
 npm run verify:ethereum-header-demo    # ethereum-header-fixture-verifier-v0 end-to-end demo
+npm run verify:ethereum-mpt-demo       # ethereum-mpt-fixture-verifier-v0 end-to-end demo (account + storage)
 npm run replay -- <receipt_id>         # replay any stored receipt
-npm run test:local-verifier            # this slice only (59 tests)
+npm run test:local-verifier            # this slice only (81 tests)
 ```
 
 ## Example request: demo-verifier-v0
@@ -139,6 +141,60 @@ becoming the verifier's authority.
 that the encoded header hashes to the declared block hash. Account
 state, storage state, finality, sync committee membership, and MPT
 witnesses are out of scope and land in subsequent verifiers.
+
+## Example request: ethereum-mpt-fixture-verifier-v0
+
+Account proof (verifies an account exists in the world state trie at a
+given state root):
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/verify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "verifier": "ethereum-mpt-fixture-verifier-v0",
+    "fixture_id": "account_19000000_weth",
+    "proof_type": "account",
+    "claimed_state_root": "0xa01a5439dde00ff901bc2ad7ad96599edf9a149bc9996449db7bdaf12b0bd27e",
+    "claimed_account_address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+  }' | jq
+```
+
+Storage proof (verifies a storage slot value exists in an account's
+storage trie at a given storage root):
+
+```bash
+curl -s -X POST http://127.0.0.1:3000/verify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "verifier": "ethereum-mpt-fixture-verifier-v0",
+    "fixture_id": "storage_19000000_weth_slot0",
+    "proof_type": "storage",
+    "claimed_storage_root": "0x266cfb6bf4138f0ccfe8f389194a7eff814ff0128a28da9ee2cbcd3e05d5da40",
+    "claimed_account_address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "claimed_storage_slot": "0x0",
+    "claimed_storage_value": "0x577261707065642045746865720000000000000000000000000000000000001a"
+  }' | jq
+```
+
+The verifier is a thin adapter over the audited proof walker in
+[`load-network/verifier.mjs`](../../load-network/verifier.mjs). It does
+**not** reimplement trie semantics — those are notoriously easy to get
+wrong (compact nibble encoding, branch vs extension vs leaf, RLP
+framing). The walker is the same code path Service 01's ZK witness
+builder consumes, and the MPT proofs in the
+[`load-network/fixtures/`](../../load-network/fixtures/) directory are
+synthesised by [`synthesise.mjs`](../../load-network/fixtures/synthesise.mjs)
+to be valid against their declared state and storage roots.
+
+**Fixture-only MPT verification.** Proof bytes are read from disk only.
+
+**No live canonical Ethereum state.** This verifier does not yet prove
+that the state root is the canonical Ethereum state root for the claimed
+block, that the block is part of the canonical chain, or that finality
+has been reached. Those land in subsequent verifiers
+(`sync-committee-fixture-verifier-v0` for finality / committee
+membership, then `live-witness-retrieval-v0` once the no-RPC moat is
+ready to selectively breach).
 
 ## Example receipt: demo-verifier-v0
 
@@ -221,6 +277,40 @@ that changed is `verifier_name` and the `reason` vocabulary.
 }
 ```
 
+## Example receipt: ethereum-mpt-fixture-verifier-v0 (account proof)
+
+```json
+{
+  "receipt_id": "2583f4c2-...",
+  "timestamp": "2026-05-08T...",
+  "service_name": "paxiom-local-verifier",
+  "verifier_name": "ethereum-mpt-fixture-verifier-v0",
+  "verifier_version": "0.1.0",
+  "input_hash": "...",
+  "output_hash": "...",
+  "decision": "pass",
+  "reason": "mpt_account_proof_valid",
+  "replay_command": "node services/local-verifier/scripts/replay.mjs 2583f4c2-...",
+  "prior_receipt_hash": "0x...",
+  "receipt_hash": "0x...",
+  "service_signature": { "algorithm": "ed25519", "key_id": "...", "public_key_pem": "...", "signature": "..." }
+}
+```
+
+`details` block:
+
+```json
+{
+  "proof_type": "account",
+  "fixture_id": "account_19000000_weth",
+  "claimed_state_root": "0xa01a5439...",
+  "claimed_account_address": "0xc02aaa39...",
+  "fixture_address": "0xc02aaa39...",
+  "fixture_storage_root": "0x266cfb6b...",
+  "proof_node_count": 1
+}
+```
+
 ## Example receipt: fixture-proof-verifier-v0
 
 ```json
@@ -285,7 +375,9 @@ services/local-verifier/
 │   ├── verifier.mjs                # demo-verifier-v0 (frozen baseline)
 │   ├── verifiers/
 │   │   ├── signature.mjs           # signature-verifier-v0
-│   │   └── fixture-proof.mjs       # fixture-proof-verifier-v0
+│   │   ├── fixture-proof.mjs       # fixture-proof-verifier-v0
+│   │   ├── ethereum-header.mjs     # ethereum-header-fixture-verifier-v0
+│   │   └── ethereum-mpt.mjs        # ethereum-mpt-fixture-verifier-v0 (thin adapter over load-network/verifier.mjs)
 │   ├── registry.mjs                # verifier dispatch
 │   ├── receipt.mjs                 # build/hash/sign/verify
 │   ├── store.mjs                   # JSONL log + receipts/ dir
@@ -304,12 +396,14 @@ services/local-verifier/
 │   ├── verify-demo.mjs                    # demo-verifier-v0 end-to-end
 │   ├── verify-signature-demo.mjs          # signature-verifier-v0 end-to-end
 │   ├── verify-fixture-demo.mjs            # fixture-proof-verifier-v0 end-to-end
-│   └── verify-ethereum-header-demo.mjs    # ethereum-header verifier end-to-end
+│   ├── verify-ethereum-header-demo.mjs    # ethereum-header verifier end-to-end
+│   └── verify-ethereum-mpt-demo.mjs       # ethereum-mpt verifier end-to-end (account + storage)
 ├── test/
 │   ├── server.test.mjs                    # 13 demo + chassis tests
 │   ├── signature.test.mjs                 # 11 registry + signature tests
 │   ├── fixture.test.mjs                   # 16 fixture + cross-verifier regression tests
-│   └── ethereum-header.test.mjs           # 19 eth-header + cross-verifier regression tests
+│   ├── ethereum-header.test.mjs           # 19 eth-header + cross-verifier regression tests
+│   └── ethereum-mpt.test.mjs              # 22 mpt + cross-verifier regression tests
 └── data/                                  # gitignored: keys, receipts, audit log
 ```
 
@@ -326,27 +420,30 @@ Progression (each is additive, none replaces what came before):
 3. ~~`fixture-proof-verifier-v0`~~ — done. Replays static MVP fixtures
    (`canonical-json-sha256-v0`). No network.
 4. ~~`ethereum-header-fixture-verifier-v0`~~ — done. Replays a 15-field
-   Ethereum-spec header from a static MVP fixture; computes
-   `keccak256(rlp(header))` via `@ethereumjs/rlp` +
-   `ethereum-cryptography/keccak`. No live RPC. Header-only — no MPT,
-   no account/storage proofs.
-5. **Next: `ethereum-mpt-fixture-verifier-v0`** — replay an MPT
-   account/storage proof against a stored state root. The
-   already-checked-in
-   [`load-network/fixtures/account_19000000_weth.json`](../../load-network/fixtures/) +
-   [`storage_19000000_weth_slot0.json`](../../load-network/fixtures/) +
-   `MANIFEST.json` are exactly designed for this and use real
-   `@ethereumjs/trie` proofs. This proves Paxiom can verify
-   Ethereum **state**, not just block envelopes.
-6. `sync-committee-fixture-verifier-v0` — wraps the existing
-   `services/sync-committee/` scaffold against a stored sync-committee
-   update fixture.
-7. `service-dispatched-verifier-v0` — AO / HyperBEAM dispatch.
-8. `paid-verifier-v0` — x402 / payment-gated wrapper around any of the above.
+   Ethereum-spec header; `keccak256(rlp(header))`. No live RPC.
+   Header-only.
+5. ~~`ethereum-mpt-fixture-verifier-v0`~~ — done. Replays Ethereum
+   account / storage proofs against a caller-supplied root using the
+   audited walker in [`load-network/verifier.mjs`](../../load-network/verifier.mjs).
+   First verifier that exercises Ethereum **state evidence**.
+6. **Next: `sync-committee-fixture-verifier-v0`** — wraps the existing
+   [`services/sync-committee/`](../sync-committee/) scaffold (BLS
+   aggregate verification + sync-committee period math) against a
+   stored sync-committee update fixture. This is the verifier that
+   begins to assert **canonicality**: a header is on the chain Ethereum
+   recognises, not just a header that hashes correctly.
+7. `live-witness-retrieval-v0` — first verifier permitted to fetch
+   from a live source. By the time we get here the chassis has proved
+   it can host header / MPT / sync-committee verification offline,
+   and the live retrieval is the smallest possible breach of the
+   no-network moat.
+8. `service-dispatched-verifier-v0` — AO / HyperBEAM dispatch.
+9. `paid-verifier-v0` — x402 / payment-gated wrapper around any of the above.
 
-Building the courtroom before calling the first witness: live network
-access stays out of the chassis until the fixture-shaped MPT and
-sync-committee verifiers prove the contract holds.
+Building the courtroom before calling the first witness: every verifier
+through `sync-committee-fixture-verifier-v0` is fixture-driven and
+deterministic. Live network access only enters the chassis after the
+fixture-shaped equivalents prove the contract holds.
 
 The discipline: never change the chassis unless a verifier physically
 forces it.

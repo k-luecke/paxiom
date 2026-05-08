@@ -14,6 +14,7 @@ import * as demo from './verifier.mjs';
 import * as signatureV0 from './verifiers/signature.mjs';
 import * as fixtureProofV0 from './verifiers/fixture-proof.mjs';
 import * as ethereumHeaderV0 from './verifiers/ethereum-header.mjs';
+import * as ethereumMptV0 from './verifiers/ethereum-mpt.mjs';
 
 export const DEFAULT_VERIFIER_ID = demo.VERIFIER_NAME;
 
@@ -41,6 +42,12 @@ const ENTRIES = [
     name: ethereumHeaderV0.VERIFIER_NAME,
     version: ethereumHeaderV0.VERIFIER_VERSION,
     verify: ethereumHeaderV0.verify,
+  },
+  {
+    id: ethereumMptV0.VERIFIER_NAME,
+    name: ethereumMptV0.VERIFIER_NAME,
+    version: ethereumMptV0.VERIFIER_VERSION,
+    verify: ethereumMptV0.verify,
   },
 ];
 
