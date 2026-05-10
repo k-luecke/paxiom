@@ -20,6 +20,9 @@
 #                              (default fixtures/sync-committee/known-good-request.json)
 #   EXPECTED_VERIFIED          if set ('true' or 'false'), asserted against verdict
 #   BLS_DEVICE_X402_MODE       passed through to harness (default 'disabled')
+#   BLS_DEVICE_BEACON_LODESTAR beacon endpoint used by harness and by this
+#                              script when lifting slot:0 fixtures to head
+#                              (default 'https://ethereum-beacon-api.publicnode.com')
 #   EVIDENCE_ROOT              default evidence/A-202
 #
 # Exit 0 only on PASS. Evidence under $EVIDENCE_ROOT/<unix_ts>-<request_sha8>/.
@@ -43,14 +46,28 @@ PORT=${PORT:-7402}
 FIXTURE=${FIXTURE:-$ROOT_DIR/fixtures/sync-committee/known-good-request.json}
 EVIDENCE_ROOT=${EVIDENCE_ROOT:-$ROOT_DIR/evidence/A-202}
 EXPECTED_VERIFIED=${EXPECTED_VERIFIED:-}
+export BLS_DEVICE_BEACON_LODESTAR=${BLS_DEVICE_BEACON_LODESTAR:-https://ethereum-beacon-api.publicnode.com}
 
 [[ -f "$FIXTURE" ]] || { echo "ERR: fixture missing: $FIXTURE" >&2; exit 2; }
 
-REQ_SHA=$(sha256sum "$FIXTURE" | cut -d' ' -f1)
+REQUEST_TMP=$(mktemp)
+cp "$FIXTURE" "$REQUEST_TMP"
+FIXTURE_SLOT=$(jq -r '.slot // empty' "$REQUEST_TMP")
+if [[ "$FIXTURE_SLOT" == "0" ]]; then
+  HEAD_JSON=$(curl -fsS "$BLS_DEVICE_BEACON_LODESTAR/eth/v1/beacon/headers/head")
+  HEAD_SLOT=$(jq -r '.data.header.message.slot // empty' <<<"$HEAD_JSON")
+  [[ -n "$HEAD_SLOT" ]] || { echo "ERR: could not resolve beacon head slot" >&2; exit 2; }
+  TMP=$(mktemp)
+  jq --arg slot "$HEAD_SLOT" '.slot = $slot' "$REQUEST_TMP" > "$TMP" && mv "$TMP" "$REQUEST_TMP"
+fi
+
+REQ_SHA=$(sha256sum "$REQUEST_TMP" | cut -d' ' -f1)
 TS=$(date +%s)
 EVIDENCE_DIR=$EVIDENCE_ROOT/$TS-${REQ_SHA:0:8}
 mkdir -p "$EVIDENCE_DIR"
-cp "$FIXTURE" "$EVIDENCE_DIR/request.json"
+cp "$REQUEST_TMP" "$EVIDENCE_DIR/request.json"
+rm -f "$REQUEST_TMP"
+REQUEST_SLOT=$(jq -r '.slot' "$EVIDENCE_DIR/request.json")
 
 GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 cat > "$EVIDENCE_DIR/meta.json" <<META
@@ -59,9 +76,11 @@ cat > "$EVIDENCE_DIR/meta.json" <<META
   "git_commit": "$GIT_COMMIT",
   "harness_path": "$BLS_DEVICE_HARNESS",
   "fixture": "$FIXTURE",
+  "request_slot": "$REQUEST_SLOT",
   "request_sha256": "$REQ_SHA",
   "expected_verified": "$EXPECTED_VERIFIED",
   "x402_mode": "${BLS_DEVICE_X402_MODE:-disabled}",
+  "beacon_lodestar": "$BLS_DEVICE_BEACON_LODESTAR",
   "paxiom_port": $PORT
 }
 META
@@ -79,6 +98,7 @@ export BLS_DEVICE_VIA_SUBPROCESS=1
 export REQUIRE_X402=0
 export PAXIOM_RESPONSE_SIGNING_KEY_ID=${PAXIOM_RESPONSE_SIGNING_KEY_ID:-paxiom-testnet-response-key-001}
 export PORT
+export SYNC_COMMITTEE_PORT=$PORT
 export BLS_DEVICE_X402_MODE=${BLS_DEVICE_X402_MODE:-disabled}
 
 node "$ROOT_DIR/services/sync-committee/server.mjs" \
@@ -95,9 +115,10 @@ done
 
 HTTP_STATUS=$(curl -sS -o "$EVIDENCE_DIR/response.json" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
-  --data @"$FIXTURE" \
+  --data @"$EVIDENCE_DIR/request.json" \
   "http://127.0.0.1:$PORT/v1/sync-committee/verify" || echo "000")
 
+[[ -f "$EVIDENCE_DIR/response.json" ]] || : > "$EVIDENCE_DIR/response.json"
 RESP_SHA=$(sha256sum "$EVIDENCE_DIR/response.json" | cut -d' ' -f1)
 TMP=$(mktemp)
 jq --arg http "$HTTP_STATUS" \
@@ -115,14 +136,14 @@ fail() {
 [[ "$HTTP_STATUS" == "200" ]] || fail "HTTP $HTTP_STATUS (expected 200)"
 
 # Outer envelope.
-SERVICE=$(jq -r '.envelope.service // empty' "$EVIDENCE_DIR/response.json")
-[[ "$SERVICE" == "A-202" ]] || fail "envelope.service != A-202 (got '$SERVICE')"
+SERVICE=$(jq -r '.service // empty' "$EVIDENCE_DIR/response.json")
+[[ "$SERVICE" == "A-202" ]] || fail "service != A-202 (got '$SERVICE')"
 
-ALG=$(jq -r '.envelope.platformSignature.algorithm // empty' "$EVIDENCE_DIR/response.json")
+ALG=$(jq -r '.platformSignature.algorithm // empty' "$EVIDENCE_DIR/response.json")
 [[ "$ALG" == "ed25519" ]] || fail "platformSignature.algorithm != ed25519 (got '$ALG')"
 
-KEY_ID=$(jq -r '.envelope.platformSignature.keyId // empty' "$EVIDENCE_DIR/response.json")
-[[ -n "$KEY_ID" ]] || fail "envelope.platformSignature.keyId empty"
+KEY_ID=$(jq -r '.platformSignature.keyId // empty' "$EVIDENCE_DIR/response.json")
+[[ -n "$KEY_ID" ]] || fail "platformSignature.keyId empty"
 
 if grep -Eq '"algorithm"[[:space:]]*:[[:space:]]*"dev"' "$EVIDENCE_DIR/response.json"; then
   fail 'response contains algorithm:"dev" (forbidden)'
