@@ -902,6 +902,7 @@ const TOKEN_META = {
   usdc: { symbol: 'USDC', decimals: 6 },
   weth: { symbol: 'WETH', decimals: 18 },
 };
+const DEPLOY_GAS_BUFFER_ETH = 0.00005;
 
 let mmWallet = null;
 
@@ -1155,19 +1156,25 @@ async function watchToken(slug) {
 
 async function runDeployTransfers() {
   if (!window.ethereum || !account) { alert('MetaMask not connected.'); return; }
-  const tasks = [];
-  document.querySelectorAll('input[data-deploy]').forEach((inp) => {
-    const v = parseFloat(inp.value);
-    if (Number.isFinite(v) && v > 0) {
-      const [chain, asset] = inp.dataset.deploy.split(':');
-      tasks.push({ chain, asset, amount: v });
-    }
-  });
+  const tasks = collectDeployTasks();
   if (!tasks.length) { $('deploy-output').textContent = 'No non-zero amounts entered.'; return; }
+  await loadMetaMaskBalances();
+  const issues = deployPreflightIssues(tasks);
+  if (issues.length) {
+    $('deploy-output').textContent = [
+      'MetaMask needs funding before these transfers can run.',
+      '',
+      ...issues.map((issue) => `- ${issue}`),
+      '',
+      'Add the missing asset to MetaMask on that network, then retry this same funding plan.',
+    ].join('\n');
+    return;
+  }
 
   const out = [];
-  $('deploy-output').textContent = `Starting ${tasks.length} transfer(s)…\n`;
-  for (const t of tasks) {
+  const orderedTasks = sortDeployTasks(tasks);
+  $('deploy-output').textContent = `Starting ${orderedTasks.length} transfer(s)…\n`;
+  for (const t of orderedTasks) {
     const info = CHAIN_INFO[t.chain];
     out.push(`\n[${info.label}] ${t.amount} ${t.asset.toUpperCase()} → ${short(operatorAddress)}`);
     $('deploy-output').textContent = out.join('');
@@ -1199,6 +1206,65 @@ async function runDeployTransfers() {
   out.push('\n\nDone. Refreshing balances in 5s…');
   $('deploy-output').textContent = out.join('');
   setTimeout(refreshArb, 5000);
+}
+
+function collectDeployTasks() {
+  const tasks = [];
+  document.querySelectorAll('input[data-deploy]').forEach((inp) => {
+    const v = parseFloat(inp.value);
+    if (Number.isFinite(v) && v > 0) {
+      const [chain, asset] = inp.dataset.deploy.split(':');
+      tasks.push({ chain, asset, amount: v });
+    }
+  });
+  return tasks;
+}
+
+function sortDeployTasks(tasks) {
+  const assetRank = { eth: 0, usdc: 1, weth: 2 };
+  return [...tasks].sort((a, b) =>
+    CHAIN_ORDER.indexOf(a.chain) - CHAIN_ORDER.indexOf(b.chain)
+    || assetRank[a.asset] - assetRank[b.asset]);
+}
+
+function deployPreflightIssues(tasks) {
+  const issues = [];
+  const byChain = new Map();
+  for (const t of tasks) {
+    const bucket = byChain.get(t.chain) || { eth: 0, usdc: 0, weth: 0, txs: 0 };
+    bucket[t.asset] += t.amount;
+    bucket.txs += 1;
+    byChain.set(t.chain, bucket);
+  }
+  for (const [chain, totals] of byChain.entries()) {
+    const info = CHAIN_INFO[chain];
+    const mm = mmWallet?.balances?.[chain];
+    if (!mm?.ok) {
+      issues.push(`${info.label}: could not read MetaMask balances${mm?.error ? ` (${mm.error})` : ''}`);
+      continue;
+    }
+    const gasNeed = totals.txs * DEPLOY_GAS_BUFFER_ETH;
+    const ethNeed = totals.eth + gasNeed;
+    if (mm.native + 1e-12 < ethNeed) {
+      const detail = totals.eth > 0
+        ? `${formatAmount(totals.eth)} ETH transfer + about ${formatAmount(gasNeed)} ETH gas`
+        : `about ${formatAmount(gasNeed)} ETH for network fees`;
+      issues.push(`${info.label}: MetaMask has ${formatAmount(mm.native)} ETH, needs ${detail}`);
+    }
+    if (totals.usdc > 0 && mm.usdc + 1e-9 < totals.usdc) {
+      issues.push(`${info.label}: MetaMask has ${formatAmount(mm.usdc, 2)} USDC, needs ${formatAmount(totals.usdc, 2)} USDC`);
+    }
+    if (totals.weth > 0 && mm.weth + 1e-12 < totals.weth) {
+      issues.push(`${info.label}: MetaMask has ${formatAmount(mm.weth)} WETH, needs ${formatAmount(totals.weth)} WETH`);
+    }
+  }
+  return issues;
+}
+
+function formatAmount(n, decimals = 6) {
+  const value = Number(n);
+  if (!Number.isFinite(value)) return '0';
+  return value.toFixed(decimals).replace(/\.?0+$/, '');
 }
 
 function bigIntFromHuman(human, decimals) {
