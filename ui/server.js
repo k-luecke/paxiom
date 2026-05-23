@@ -108,6 +108,14 @@ export function createApp() {
       if (req.method === 'GET' && url.pathname === '/api/arb/balance-plan') {
         return proxyJson(res, runnerUrl(`/v1/runner/balance-plan${url.search}`));
       }
+      if (req.method === 'GET' && url.pathname === '/api/arb/operator-rebalance-quote') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl(`/v1/runner/operator-rebalance-quote${url.search}`));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/operator-rebalance') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/operator-rebalance'), 'POST', req);
+      }
       if (req.method === 'GET' && url.pathname === '/api/arb/funding-quote') {
         if (!authOrReject(req, res)) return;
         return sendJson(res, 200, await fundingQuote(url.searchParams));

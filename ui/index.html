@@ -1100,6 +1100,7 @@ function renderDeploySummary(plan) {
         <button data-switch-chain="${escapeHtml(a.chain)}" style="height:26px;padding:0 8px">Switch</button>
         ${a.asset === 'eth' ? '' : `<button data-watch-token="${escapeHtml(a.chain)}:${escapeHtml(a.asset)}" style="height:26px;padding:0 8px">Show ${escapeHtml(symbol)}</button>`}
         ${a.chain === 'base' ? '' : `<button data-bridge-from-base="${escapeHtml(a.chain)}:${escapeHtml(a.asset)}:${escapeHtml(String(a.rounded))}" style="height:26px;padding:0 8px">Bridge from Base ETH</button>`}
+        ${a.chain === 'base' ? '' : `<button data-operator-rebalance="${escapeHtml(a.chain)}:${escapeHtml(a.asset)}:${escapeHtml(String(a.rounded))}" style="height:26px;padding:0 8px">Rebalance operator</button>`}
       </span>`;
     return row;
   });
@@ -1116,6 +1117,9 @@ function bindDeployHelpers() {
   });
   document.querySelectorAll('button[data-bridge-from-base]').forEach((btn) => {
     btn.onclick = () => bridgeFromBaseEth(btn.dataset.bridgeFromBase);
+  });
+  document.querySelectorAll('button[data-operator-rebalance]').forEach((btn) => {
+    btn.onclick = () => rebalanceOperator(btn.dataset.operatorRebalance);
   });
 }
 
@@ -1329,6 +1333,48 @@ async function bridgeFromBaseEth(slug) {
     `tx: ${txHash}`,
     '',
     `Waiting for the bridge to deliver ${toAsset.toUpperCase()} to ${CHAIN_INFO[toChain].label}. Refresh balances in a minute or two.`,
+  ].join('\n');
+  setTimeout(refreshArb, 60000);
+}
+
+async function rebalanceOperator(slug) {
+  if (!session) { await connectWallet(); if (!session) return; }
+  if (!operatorAddress) { alert('Operator address not loaded yet.'); return; }
+  const [toChain, toAsset, amountText] = slug.split(':');
+  const amount = Number(amountText);
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Invalid rebalance amount.'); return; }
+  $('deploy-output').textContent = `Getting operator rebalance quote from Base ETH to ${CHAIN_INFO[toChain].label} ${toAsset.toUpperCase()}…`;
+  const params = new URLSearchParams({
+    fromChain: 'base',
+    toChain,
+    toAsset,
+    amount: String(amount),
+  });
+  const quote = await readJsonResponse(await authedFetch(`/api/arb/operator-rebalance-quote?${params}`));
+  const decimals = toAsset === 'usdc' ? 6 : 18;
+  const fromEth = Number(BigInt(quote.fromAmount || '0')) / 1e18;
+  const delivered = quote.toAmount ? Number(BigInt(quote.toAmount)) / (10 ** decimals) : amount;
+  const ok = confirm(
+    `Rebalance operator wallet?\n\n` +
+    `Provider: ${quote.provider || quote.tool || 'bridge provider'}\n` +
+    `Spend: about ${formatAmount(fromEth)} ETH from operator on Base\n` +
+    `Deliver: about ${formatAmount(delivered, decimals === 6 ? 2 : 6)} ${toAsset.toUpperCase()} to operator on ${CHAIN_INFO[toChain].label}\n\n` +
+    `This transaction is signed by the local operator wallet, not MetaMask.`
+  );
+  if (!ok) {
+    $('deploy-output').textContent = 'Operator rebalance cancelled.';
+    return;
+  }
+  const result = await readJsonResponse(await authedFetch('/api/arb/operator-rebalance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fromChain: 'base', toChain, toAsset, amount }),
+  }));
+  $('deploy-output').textContent = [
+    `Operator rebalance submitted via ${result.provider || result.tool || 'bridge provider'}.`,
+    `tx: ${result.hash}`,
+    '',
+    `Bridge delivery can take a minute or two. Refresh balances before running dust.`,
   ].join('\n');
   setTimeout(refreshArb, 60000);
 }

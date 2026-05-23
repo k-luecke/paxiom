@@ -185,6 +185,24 @@ test('cross-chain dust endpoint rejects same-chain route before spawning', async
   } finally { ctx.cleanup(); }
 });
 
+test('operator rebalance endpoints validate inputs before quoting or signing', async () => {
+  const ctx = await startRunner();
+  try {
+    const badQuote = await getJson(ctx.url, '/v1/runner/operator-rebalance-quote?fromChain=base&toChain=bogus&toAsset=usdc&amount=1');
+    assert.equal(badQuote.status, 400);
+    assert.match(badQuote.body.error, /unknown toChain/);
+
+    const badPost = await postJson(ctx.url, '/v1/runner/operator-rebalance', {
+      fromChain: 'optimism',
+      toChain: 'base',
+      toAsset: 'usdc',
+      amount: 1,
+    });
+    assert.equal(badPost.status, 400);
+    assert.match(badPost.body.error, /Base ETH source/);
+  } finally { ctx.cleanup(); }
+});
+
 test('start endpoint refuses if emergency-closed', async () => {
   const ctx = await startRunner();
   try {

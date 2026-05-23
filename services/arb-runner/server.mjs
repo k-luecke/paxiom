@@ -95,6 +95,12 @@ const publicClients = Object.fromEntries(
 const walletClients = Object.fromEntries(
   Object.keys(RPCS).map((c) => [c, createWalletClient({ account: operatorAccount, chain: chainObj(c), transport: http(RPCS[c]) })])
 );
+const LIFI_CHAIN_IDS = { optimism: 10, base: 8453, arbitrum: 42161 };
+const LIFI_TOKENS = {
+  optimism: { eth: 'ETH', usdc: 'USDC', weth: TOKENS.optimism.weth },
+  base: { eth: 'ETH', usdc: 'USDC', weth: TOKENS.base.weth },
+  arbitrum: { eth: 'ETH', usdc: 'USDC', weth: TOKENS.arbitrum.weth },
+};
 
 function isAddress(s) {
   return typeof s === 'string' && /^0x[0-9a-fA-F]{40}$/.test(s);
@@ -502,6 +508,79 @@ async function sendNativeEth(chain, to, amount) {
   return { hash, chain, asset: 'eth', to, amount: amount.toString() };
 }
 
+function validateOperatorRebalance({ fromChain = 'base', toChain, toAsset, amount } = {}) {
+  if (fromChain !== 'base') throw new Error('only Base ETH source rebalancing is enabled for now');
+  if (!LIFI_CHAIN_IDS[toChain]) throw new Error(`unknown toChain ${toChain}`);
+  if (!LIFI_TOKENS[toChain]?.[toAsset]) throw new Error(`unknown toAsset ${toAsset}`);
+  if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) throw new Error('amount must be positive');
+  return { fromChain, toChain, toAsset, amount: Number(amount) };
+}
+
+async function quoteOperatorRebalance(opts = {}) {
+  const { fromChain, toChain, toAsset, amount } = validateOperatorRebalance(opts);
+  const toAmount = parseAmount(toAsset, amount).toString();
+  const quoteUrl = new URL('https://li.quest/v1/quote/toAmount');
+  quoteUrl.search = new URLSearchParams({
+    fromChain: String(LIFI_CHAIN_IDS[fromChain]),
+    toChain: String(LIFI_CHAIN_IDS[toChain]),
+    fromToken: 'ETH',
+    toToken: LIFI_TOKENS[toChain][toAsset],
+    fromAddress: operatorAccount.address,
+    toAddress: operatorAccount.address,
+    toAmount,
+    slippage: '0.01',
+    order: 'CHEAPEST',
+    integrator: 'paxiom',
+  }).toString();
+  const resp = await fetch(quoteUrl, { headers: { Accept: 'application/json' } });
+  const text = await resp.text();
+  let quote;
+  try { quote = JSON.parse(text); } catch { quote = { message: text.slice(0, 500) }; }
+  if (!resp.ok) throw new Error(quote.message || quote.error || `quote failed (${resp.status})`);
+  return {
+    fromChain,
+    toChain,
+    toAsset,
+    requestedAmount: amount,
+    provider: quote.toolDetails?.name || quote.tool || 'bridge provider',
+    tool: quote.tool,
+    fromAmount: quote.action?.fromAmount || null,
+    toAmount: quote.estimate?.toAmount || toAmount,
+    transactionRequest: quote.transactionRequest,
+  };
+}
+
+async function executeOperatorRebalance(opts = {}) {
+  const quote = await quoteOperatorRebalance(opts);
+  const tx = quote.transactionRequest;
+  if (!tx?.to || !tx?.data) throw new Error('quote did not include a transaction request');
+  const value = BigInt(tx.value || '0x0');
+  const currentBaseEth = await withRpcRetry('operator base eth before rebalance', () =>
+    publicClients[quote.fromChain].getBalance({ address: operatorAccount.address }));
+  const gasReserve = 100_000_000_000_000n; // 0.0001 ETH
+  if (currentBaseEth < value + gasReserve) {
+    throw new Error(`insufficient Base ETH for rebalance: have ${Number(currentBaseEth) / 1e18}, need ${(Number(value + gasReserve) / 1e18)}`);
+  }
+  const hash = await walletClients[quote.fromChain].sendTransaction({
+    to: tx.to,
+    value,
+    data: tx.data,
+    gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
+  });
+  appendFileSync(join(PAXIOM_DIR, 'operator-rebalances.log'), JSON.stringify({
+    at: new Date().toISOString(),
+    hash,
+    fromChain: quote.fromChain,
+    toChain: quote.toChain,
+    toAsset: quote.toAsset,
+    requestedAmount: quote.requestedAmount,
+    provider: quote.provider,
+    fromAmount: quote.fromAmount,
+    toAmount: quote.toAmount,
+  }) + '\n');
+  return { broadcast: true, hash, ...quote, transactionRequest: undefined };
+}
+
 async function withRpcRetry(label, fn, attempts = 6) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
@@ -836,6 +915,28 @@ export function createApp() {
           gasEth: Number(url.searchParams.get('gasEth') || 0.001),
         });
         return sendJson(res, 200, { operator: operatorAccount.address, ...plan });
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
+    }
+    if (url.pathname === '/v1/runner/operator-rebalance-quote') {
+      try {
+        return sendJson(res, 200, await quoteOperatorRebalance({
+          fromChain: url.searchParams.get('fromChain') || 'base',
+          toChain: url.searchParams.get('toChain') || '',
+          toAsset: url.searchParams.get('toAsset') || '',
+          amount: url.searchParams.get('amount') || '',
+        }));
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
+    }
+    if (url.pathname === '/v1/runner/operator-rebalance') {
+      if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);
+      let body = {};
+      try { body = await readJsonBody(req); } catch {}
+      try {
+        return sendJson(res, 200, await executeOperatorRebalance(body || {}));
       } catch (e) {
         return sendJson(res, 400, { error: e.message });
       }

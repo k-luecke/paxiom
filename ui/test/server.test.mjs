@@ -159,6 +159,8 @@ const PRIVILEGED_ROUTES = [
   ['POST', '/api/arb/test-half-fill'],
   ['POST', '/api/arb/test-crosschain-loop'],
   ['GET', '/api/arb/funding-quote'],
+  ['GET', '/api/arb/operator-rebalance-quote'],
+  ['POST', '/api/arb/operator-rebalance'],
 ];
 
 test('privileged /api/arb routes reject unauthenticated requests', async () => {
