@@ -20,7 +20,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { createInterface } from 'readline';
 import {
-  createPublicClient, createWalletClient, http, encodeFunctionData,
+  createPublicClient, createWalletClient, http, fallback, encodeFunctionData,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { optimism, arbitrum, base } from 'viem/chains';
@@ -49,10 +49,35 @@ if (!Number.isFinite(SIZE_USD) || SIZE_USD <= 0)  fatal('size must be positive n
 if (SIZE_USD > MAX_SIZE_USD) fatal(`size $${SIZE_USD} exceeds hard cap $${MAX_SIZE_USD}`);
 
 // ─── config (mainnet only) ───────────────────────────────────
-const RPCS = {
-  optimism: process.env.RPC_OPTIMISM || 'https://mainnet.optimism.io',
-  arbitrum: process.env.RPC_ARBITRUM || 'https://arb1.arbitrum.io/rpc',
-  base:     process.env.RPC_BASE     || 'https://mainnet.base.org',
+const DEFAULT_RPCS = {
+  optimism: [
+    'https://mainnet.optimism.io',
+    'https://optimism-rpc.publicnode.com',
+    'https://optimism.llamarpc.com',
+    'https://1rpc.io/op',
+  ],
+  arbitrum: [
+    'https://arb1.arbitrum.io/rpc',
+    'https://arbitrum-one-rpc.publicnode.com',
+    'https://arbitrum.llamarpc.com',
+    'https://1rpc.io/arb',
+  ],
+  base: [
+    'https://mainnet.base.org',
+    'https://base-rpc.publicnode.com',
+    'https://base.llamarpc.com',
+    'https://1rpc.io/base',
+  ],
+};
+const LEGACY_RPC_ENVS = {
+  optimism: 'RPC_OPTIMISM',
+  arbitrum: 'RPC_ARBITRUM',
+  base: 'RPC_BASE',
+};
+const RPC_URLS = {
+  optimism: rpcUrls('optimism'),
+  arbitrum: rpcUrls('arbitrum'),
+  base: rpcUrls('base'),
 };
 const TOKENS = {
   optimism: { usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', weth: '0x4200000000000000000000000000000000000006', router: '0xE592427A0AEce92De3Edee1F18E0157C05861564' },
@@ -118,8 +143,11 @@ const account = privateKeyToAccount(OPERATOR_KEY);
 
 // ─── chain clients ───────────────────────────────────────────
 const chainObj = (n) => ({ optimism, arbitrum, base })[n];
-const publicC = (c) => createPublicClient({ chain: chainObj(c), transport: http(RPCS[c]) });
-const walletC = (c) => createWalletClient({ account, chain: chainObj(c), transport: http(RPCS[c]) });
+const publicC = (c) => createPublicClient({
+  chain: chainObj(c),
+  transport: fallback(RPC_URLS[c].map((url) => http(url)), { retryCount: 0 }),
+});
+const walletC = (c) => createWalletClient({ account, chain: chainObj(c), transport: http(RPC_URLS[c][0]) });
 
 // Retry wrapper for read-only calls. Backs off on 429 / "over rate limit".
 async function withRetry(label, fn, attempts = 5) {
@@ -144,6 +172,7 @@ async function main() {
   log('═══ Paxiom test-trade — single shot, mainnet ═══');
   log(`buy:  ${BUY_CHAIN}    sell: ${SELL_CHAIN}    size: $${SIZE_USD}    slippage: ${SLIPPAGE_BPS} bps`);
   log(`operator: ${account.address}`);
+  log(`rpc: ${BUY_CHAIN} ${describeRpc(RPC_URLS[BUY_CHAIN])}    ${SELL_CHAIN} ${describeRpc(RPC_URLS[SELL_CHAIN])}`);
   log('');
 
   const buy  = TOKENS[BUY_CHAIN];
@@ -203,22 +232,12 @@ async function main() {
   }
   log('');
 
-  // 2b. Auto-wrap native ETH on the sell chain if the sell leg needs WETH.
+  // 2b. Plan native ETH wrapping on the sell chain if the sell leg needs WETH.
   const latestWethBal = await withRetry('sell WETH before wrap', () => sellP.readContract({ address: sell.weth, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }));
+  const wrapAmount = latestWethBal < wethOut ? wethOut - latestWethBal : 0n;
   if (latestWethBal < wethOut) {
-    const wrapAmount = wethOut - latestWethBal;
-    log('─ 2b. Wrap native ETH → WETH on sell chain ─');
-    log(`  wrapping ${(Number(wrapAmount) / 1e18).toFixed(8)} ETH on ${SELL_CHAIN}`);
-    const wrapHash = await sellW.sendTransaction({
-      to: sell.weth,
-      value: wrapAmount,
-      gas: 60000n,
-      data: encodeFunctionData({ abi: WETH_ABI, functionName: 'deposit', args: [] }),
-    });
-    log(`  wrap → ${EXPLORERS[SELL_CHAIN]}/tx/${wrapHash}`);
-    const wrapReceipt = await sellP.waitForTransactionReceipt({ hash: wrapHash, timeout: 60_000 });
-    if (wrapReceipt.status !== 'success') fatal(`wrap reverted on ${SELL_CHAIN}`);
-    log(`  wrap confirmed (block ${wrapReceipt.blockNumber})`);
+    log('─ 2b. Native ETH → WETH wrap needed on sell chain ─');
+    log(`  will wrap ${(Number(wrapAmount) / 1e18).toFixed(8)} ETH on ${SELL_CHAIN} after confirmation`);
     log('');
   }
 
@@ -232,10 +251,14 @@ async function main() {
 
   // 4. Plan summary
   log('─ 4. Broadcast plan ─');
-  log(`  4a. approve ${buy.usdc} (${BUY_CHAIN} USDC) → router ${buy.router}  [MAX_UINT]`);
-  log(`  4b. approve ${sell.weth} (${SELL_CHAIN} WETH) → router ${sell.router}  [MAX_UINT]`);
-  log(`  4c. swap ${BUY_CHAIN}: USDC → WETH at fee 500, amountIn=${TRADE_USDC}, minOut=${buyMinOut}`);
-  log(`  4d. swap ${SELL_CHAIN}: WETH → USDC at fee 500, amountIn=${wethOut}, minOut=${sellMinOut}`);
+  let step = 1;
+  if (wrapAmount > 0n) {
+    log(`  4${String.fromCharCode(96 + step++)}. wrap ${(Number(wrapAmount) / 1e18).toFixed(8)} ETH → WETH on ${SELL_CHAIN}`);
+  }
+  log(`  4${String.fromCharCode(96 + step++)}. approve ${buy.usdc} (${BUY_CHAIN} USDC) → router ${buy.router}  [MAX_UINT]`);
+  log(`  4${String.fromCharCode(96 + step++)}. approve ${sell.weth} (${SELL_CHAIN} WETH) → router ${sell.router}  [MAX_UINT]`);
+  log(`  4${String.fromCharCode(96 + step++)}. swap ${BUY_CHAIN}: USDC → WETH at fee 500, amountIn=${TRADE_USDC}, minOut=${buyMinOut}`);
+  log(`  4${String.fromCharCode(96 + step++)}. swap ${SELL_CHAIN}: WETH → USDC at fee 500, amountIn=${wethOut}, minOut=${sellMinOut}`);
   log(`  Approvals fire in parallel; swaps fire in parallel after approvals confirm.`);
   log('');
 
@@ -247,9 +270,25 @@ async function main() {
     log('--yes flag set, proceeding.');
   }
 
-  // 6. Approvals — check existing allowance, skip if already MAX
+  // 6. Wrap if needed, then approvals — check existing allowance, skip if already MAX
+  if (wrapAmount > 0n) {
+    log('');
+    log('─ 6. Wrap native ETH → WETH on sell chain ─');
+    log(`  wrapping ${(Number(wrapAmount) / 1e18).toFixed(8)} ETH on ${SELL_CHAIN}`);
+    const wrapHash = await sellW.sendTransaction({
+      to: sell.weth,
+      value: wrapAmount,
+      gas: 60000n,
+      data: encodeFunctionData({ abi: WETH_ABI, functionName: 'deposit', args: [] }),
+    });
+    log(`  wrap → ${EXPLORERS[SELL_CHAIN]}/tx/${wrapHash}`);
+    const wrapReceipt = await sellP.waitForTransactionReceipt({ hash: wrapHash, timeout: 60_000 });
+    if (wrapReceipt.status !== 'success') fatal(`wrap reverted on ${SELL_CHAIN}`);
+    log(`  wrap confirmed (block ${wrapReceipt.blockNumber})`);
+  }
+
   log('');
-  log('─ 6. Approvals (parallel) ─');
+  log('─ 7. Approvals (parallel) ─');
   const MAX_UINT = (1n << 256n) - 1n;
   const HALF_MAX = MAX_UINT / 2n;
   const buyAllow  = await withRetry('buy allowance',  () => buyP.readContract({  address: buy.usdc,  abi: ERC20_ABI, functionName: 'allowance', args: [account.address, buy.router] }));
@@ -291,8 +330,8 @@ async function main() {
   }
   log('');
 
-  // 7. Swaps in parallel
-  log('─ 7. Swaps (parallel) ─');
+  // 8. Swaps in parallel
+  log('─ 8. Swaps (parallel) ─');
   const [buyHash, sellHash] = await Promise.all([
     buyW.sendTransaction({
       to: buy.router, gas: 250000n,
@@ -315,8 +354,8 @@ async function main() {
   log(`  sell → ${EXPLORERS[SELL_CHAIN]}/tx/${sellHash}`);
   log('');
 
-  // 8. Wait for receipts
-  log('─ 8. Waiting for both receipts (≤60s) ─');
+  // 9. Wait for receipts
+  log('─ 9. Waiting for both receipts (≤60s) ─');
   const results = await Promise.allSettled([
     buyP.waitForTransactionReceipt({  hash: buyHash,  timeout: 60_000 }),
     sellP.waitForTransactionReceipt({ hash: sellHash, timeout: 60_000 }),
@@ -329,8 +368,8 @@ async function main() {
   log(`  sell: ${sellOk ? 'SUCCESS' : (sellResult.status === 'fulfilled' ? 'REVERTED' : 'TIMEOUT/ERROR')} ${sellResult.value?.blockNumber ? `block ${sellResult.value.blockNumber}` : ''}`);
   log('');
 
-  // 9. Final balances + delta
-  log('─ 9. Final balances ─');
+  // 10. Final balances + delta
+  log('─ 10. Final balances ─');
   const usdcBal2     = await withRetry('final buy USDC',  () => buyP.readContract({  address: buy.usdc,  abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }));
   const wethBal2     = await withRetry('final sell WETH', () => sellP.readContract({ address: sell.weth, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }));
   const sellChainUsdc = await withRetry('final sell USDC', () => sellP.readContract({ address: sell.usdc, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }));
@@ -339,7 +378,7 @@ async function main() {
   log(`  ${SELL_CHAIN} USDC: → ${(Number(sellChainUsdc) / 1e6).toFixed(4)} (the trade output)`);
   log('');
 
-  // 10. Append to execution.log so the rest of the platform sees it
+  // 11. Append to execution.log so the rest of the platform sees it
   appendFileSync(join(PAXIOM_DIR, 'execution.log'), JSON.stringify({
     timestamp: new Date().toISOString(),
     source: 'TEST-TRADE',
@@ -374,6 +413,21 @@ async function main() {
 function log(s) { console.log(s); }
 function fatal(s) { console.error(`FATAL: ${s}`); process.exit(1); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function rpcUrls(chain) {
+  const envName = `RPC_${chain.toUpperCase()}_URLS`;
+  const configured = process.env[envName] || process.env[LEGACY_RPC_ENVS[chain]];
+  const urls = configured ? configured.split(/[,\s]+/) : DEFAULT_RPCS[chain];
+  return [...new Set([...urls, ...DEFAULT_RPCS[chain]].map((url) => url.trim()).filter(Boolean))];
+}
+function describeRpc(urls) {
+  const primary = redactUrl(urls[0]);
+  return urls.length > 1 ? `${primary} (+${urls.length - 1} fallback${urls.length === 2 ? '' : 's'})` : primary;
+}
+function redactUrl(url) {
+  return url.replace(/([?&](?:api[_-]?key|apikey|key|token)=)[^&]+/ig, '$1***')
+    .replace(/(\/v2\/)[^/?#]+/i, '$1***')
+    .replace(/(\/v3\/)[^/?#]+/i, '$1***');
+}
 function prompt(question) {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
