@@ -105,6 +105,9 @@ export function createApp() {
       if (req.method === 'GET' && url.pathname === '/api/arb/preflight') {
         return proxyJson(res, runnerUrl(`/v1/runner/preflight${url.search}`));
       }
+      if (req.method === 'GET' && url.pathname === '/api/arb/balance-plan') {
+        return proxyJson(res, runnerUrl(`/v1/runner/balance-plan${url.search}`));
+      }
       if (req.method === 'POST' && url.pathname === '/api/arb/test-roundtrip') {
         if (!authOrReject(req, res)) return;
         return proxyJson(res, runnerUrl('/v1/runner/test-roundtrip'), 'POST', req);

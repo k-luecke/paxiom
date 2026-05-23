@@ -28,7 +28,7 @@ async function startRunner({ extraEnv = {} } = {}) {
     const app = mod.createApp();
     const server = app.listen(0, '127.0.0.1', () => {
       resolve({
-        server, dir,
+        server, dir, mod,
         url: `http://127.0.0.1:${server.address().port}`,
         cleanup: () => {
           server.close();
@@ -66,6 +66,48 @@ test('runner exposes wallet, status, performance', async () => {
     const perf = await getJson(ctx.url, '/v1/runner/performance');
     assert.equal(perf.status, 200);
     assert.equal(perf.body.attempts, 0);
+  } finally { ctx.cleanup(); }
+});
+
+test('balance planner computes route and pair deficits', async () => {
+  const ctx = await startRunner();
+  try {
+    const balances = {
+      optimism: { ok: true, usdc: 0.25, weth: 0, native: 0 },
+      base: { ok: true, usdc: 0, weth: 0.0001, native: 0.01 },
+      arbitrum: { ok: true, usdc: 0, weth: 0, native: 0 },
+    };
+    const route = ctx.mod.buildBalancePlan({
+      balances,
+      tradeSizeUsd: 1,
+      buyChain: 'optimism',
+      sellChain: 'base',
+      strategy: 'route',
+      bufferPct: 10,
+      gasEth: 0.001,
+    });
+    assert.equal(route.ok, false);
+    assert.ok(Math.abs(route.perChain.optimism.deficits.usdc - 0.85) < 1e-9);
+    assert.ok(Math.abs(route.perChain.optimism.deficits.eth - 0.001) < 1e-12);
+    assert.ok(Math.abs(route.perChain.base.deficits.weth - 0.00045) < 1e-12);
+    assert.equal(route.perChain.base.deficits.eth, 0);
+    assert.deepEqual(route.actions.map((a) => [a.chain, a.asset, a.rounded]), [
+      ['optimism', 'usdc', 0.85],
+      ['optimism', 'eth', 0.001],
+      ['base', 'weth', 0.00045],
+    ]);
+
+    const pair = ctx.mod.buildBalancePlan({
+      balances,
+      tradeSizeUsd: 1,
+      buyChain: 'optimism',
+      sellChain: 'base',
+      strategy: 'pair',
+      bufferPct: 10,
+      gasEth: 0.001,
+    });
+    assert.ok(pair.actions.some((a) => a.chain === 'base' && a.asset === 'usdc'));
+    assert.ok(pair.actions.some((a) => a.chain === 'optimism' && a.asset === 'weth'));
   } finally { ctx.cleanup(); }
 });
 

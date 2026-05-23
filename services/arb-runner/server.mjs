@@ -114,6 +114,86 @@ function parseAmount(asset, human) {
   return intPart * factor + fracPart;
 }
 
+export function buildBalancePlan({
+  balances = {},
+  tradeSizeUsd = 500,
+  buyChain = 'optimism',
+  sellChain = 'base',
+  strategy = 'route',
+  bufferPct = 10,
+  gasEth = 0.001,
+} = {}) {
+  const chains = Object.keys(TOKENS);
+  if (!chains.includes(buyChain)) throw new Error(`unknown buyChain ${buyChain}`);
+  if (!chains.includes(sellChain)) throw new Error(`unknown sellChain ${sellChain}`);
+  if (buyChain === sellChain) throw new Error('buyChain and sellChain must differ');
+  if (!Number.isFinite(Number(tradeSizeUsd)) || Number(tradeSizeUsd) <= 0) throw new Error('tradeSizeUsd must be positive');
+  if (!Number.isFinite(Number(bufferPct)) || Number(bufferPct) < 0) throw new Error('bufferPct must be non-negative');
+  if (!Number.isFinite(Number(gasEth)) || Number(gasEth) < 0) throw new Error('gasEth must be non-negative');
+  const mode = strategy === 'pair' ? 'pair' : 'route';
+  const buffer = 1 + Number(bufferPct) / 100;
+  const usdcTarget = Number(tradeSizeUsd) * buffer;
+  const wethTarget = (Number(tradeSizeUsd) / 2000) * buffer;
+  const targets = Object.fromEntries(chains.map((chain) => [chain, { usdc: 0, weth: 0, native: 0 }]));
+
+  if (mode === 'pair') {
+    for (const chain of [buyChain, sellChain]) {
+      targets[chain].usdc = usdcTarget;
+      targets[chain].weth = wethTarget;
+      targets[chain].native = Number(gasEth);
+    }
+  } else {
+    targets[buyChain].usdc = usdcTarget;
+    targets[buyChain].native = Number(gasEth);
+    targets[sellChain].weth = wethTarget;
+    targets[sellChain].native = Number(gasEth);
+  }
+
+  const perChain = {};
+  const actions = [];
+  for (const chain of chains) {
+    const current = balances[chain]?.ok ? balances[chain] : { usdc: 0, weth: 0, native: 0 };
+    const target = targets[chain];
+    const deficits = {
+      usdc: Math.max(0, target.usdc - Number(current.usdc || 0)),
+      weth: Math.max(0, target.weth - Number(current.weth || 0)),
+      eth: Math.max(0, target.native - Number(current.native || 0)),
+    };
+    perChain[chain] = { target, current, deficits, ok: Object.values(deficits).every((v) => v <= 0.0000001) };
+    for (const [asset, amount] of Object.entries(deficits)) {
+      if (amount > 0) actions.push({
+        chain,
+        asset,
+        amount,
+        rounded: asset === 'usdc' ? roundUp(amount, 2) : roundUp(amount, 6),
+      });
+    }
+  }
+
+  return {
+    ok: actions.length === 0,
+    strategy: mode,
+    buyChain,
+    sellChain,
+    tradeSizeUsd: Number(tradeSizeUsd),
+    bufferPct: Number(bufferPct),
+    gasEth: Number(gasEth),
+    assumptions: {
+      wethUsd: 2000,
+      route: mode === 'route'
+        ? 'funds only the selected buy/sell direction'
+        : 'funds both chains with USDC and WETH so either direction can fire',
+    },
+    perChain,
+    actions,
+  };
+}
+
+function roundUp(amount, decimals) {
+  const factor = 10 ** decimals;
+  return Math.ceil((Number(amount) - Number.EPSILON) * factor) / factor;
+}
+
 async function sendErc20(chain, asset, to, amount) {
   if (!RPCS[chain]) throw new Error(`unknown chain ${chain}`);
   if (asset !== 'usdc' && asset !== 'weth') throw new Error('asset must be usdc, weth, or eth');
@@ -666,6 +746,23 @@ export function createApp() {
       checks.push({ id: 'at_least_two_chains_funded', ok: readyChainPairs >= 2, detail: `${readyChainPairs}/3 chains have sufficient inventory` });
       const allOk = checks.every((c) => c.ok);
       return sendJson(res, 200, { ok: allOk, tradeSizeUsd, checks, perChain: chainState });
+    }
+    if (url.pathname === '/v1/runner/balance-plan') {
+      try {
+        const balances = await getBalances(operatorAccount.address);
+        const plan = buildBalancePlan({
+          balances,
+          tradeSizeUsd: Number(url.searchParams.get('tradeSizeUsd') || 500),
+          buyChain: url.searchParams.get('buyChain') || 'optimism',
+          sellChain: url.searchParams.get('sellChain') || 'base',
+          strategy: url.searchParams.get('strategy') || 'route',
+          bufferPct: Number(url.searchParams.get('bufferPct') || 10),
+          gasEth: Number(url.searchParams.get('gasEth') || 0.001),
+        });
+        return sendJson(res, 200, { operator: operatorAccount.address, ...plan });
+      } catch (e) {
+        return sendJson(res, 400, { error: e.message });
+      }
     }
     if (url.pathname === '/v1/runner/start') {
       if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);

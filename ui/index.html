@@ -249,7 +249,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
         </div>
         <div class="panel-body">
           <div class="field" style="margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div><label for="arb-trade-size">Trade size (USDC)</label><input id="arb-trade-size" type="number" min="100" step="100" value="500"></div>
+            <div><label for="arb-trade-size">Trade size (USDC)</label><input id="arb-trade-size" type="number" min="1" step="1" value="500"></div>
             <div><label for="arb-slippage">Slippage (bps)</label><input id="arb-slippage" type="number" min="10" max="500" value="50"></div>
           </div>
           <div class="actions">
@@ -303,7 +303,16 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
         <button id="deploy-close" class="icon">×</button>
       </div>
       <div class="panel-body">
-        <div class="notice warn">Each row sends one ERC20 transfer from your connected MetaMask wallet to the operator address on that chain. MetaMask will prompt you to switch networks between rows.</div>
+        <div class="notice warn">Each row sends one transfer from your connected MetaMask wallet to the operator address on that chain. MetaMask will prompt you to switch networks between rows.</div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+          <div><label for="deploy-buy-chain">Buy chain</label><select id="deploy-buy-chain"><option value="optimism">Optimism</option><option value="base">Base</option><option value="arbitrum">Arbitrum</option></select></div>
+          <div><label for="deploy-sell-chain">Sell chain</label><select id="deploy-sell-chain"><option value="base">Base</option><option value="optimism">Optimism</option><option value="arbitrum">Arbitrum</option></select></div>
+          <div><label for="deploy-strategy">Balance profile</label><select id="deploy-strategy"><option value="route">Selected route only</option><option value="pair">Both directions</option></select></div>
+          <div><label for="deploy-buffer">Buffer (%)</label><input id="deploy-buffer" type="number" min="0" step="1" value="10"></div>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="deploy-plan">Fill deficits for trade size</button>
+        </div>
         <div id="deploy-rows" style="display:grid;gap:14px;margin-top:14px"></div>
         <div class="actions" style="margin-top:14px">
           <button id="deploy-cancel">Cancel</button>
@@ -377,6 +386,7 @@ async function init() {
   $('arb-fund-btn').addEventListener('click', deployCapital);
   $('deploy-close').addEventListener('click', closeDeployModal);
   $('deploy-cancel').addEventListener('click', closeDeployModal);
+  $('deploy-plan').addEventListener('click', loadBalancePlan);
   $('deploy-run').addEventListener('click', runDeployTransfers);
   $('arb-pt-run').addEventListener('click', runPathTest);
   $('arb-pt-loop').addEventListener('click', injectCrossChainLoop);
@@ -868,14 +878,17 @@ async function deployCapital() {
 }
 
 function openDeployModal() {
+  $('deploy-buy-chain').value = 'optimism';
+  $('deploy-sell-chain').value = 'base';
   const rows = CHAIN_ORDER.map((chain) => {
     const info = CHAIN_INFO[chain];
     return `
       <div style="border:1px solid var(--line);border-radius:6px;padding:10px">
         <strong>${info.label}</strong> <span class="pill">chainId ${info.id}</span>
-        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px">
           <div><label>USDC amount</label><input type="number" step="0.01" min="0" data-deploy="${chain}:usdc" placeholder="0"></div>
           <div><label>WETH amount</label><input type="number" step="0.0001" min="0" data-deploy="${chain}:weth" placeholder="0"></div>
+          <div><label>ETH gas</label><input type="number" step="0.0001" min="0" data-deploy="${chain}:eth" placeholder="0"></div>
         </div>
       </div>`;
   }).join('');
@@ -885,6 +898,35 @@ function openDeployModal() {
 }
 
 function closeDeployModal() { $('deploy-modal').classList.add('hidden'); }
+
+async function loadBalancePlan() {
+  const tradeSizeUsd = Number($('arb-trade-size').value) || 1;
+  const params = new URLSearchParams({
+    tradeSizeUsd: String(tradeSizeUsd),
+    buyChain: $('deploy-buy-chain').value,
+    sellChain: $('deploy-sell-chain').value,
+    strategy: $('deploy-strategy').value,
+    bufferPct: $('deploy-buffer').value || '10',
+  });
+  const plan = await fetch(`/api/arb/balance-plan?${params}`).then((r) => r.json()).catch((e) => ({ error: e.message }));
+  if (plan.error) {
+    $('deploy-output').textContent = `Balance plan failed: ${plan.error}`;
+    return;
+  }
+  document.querySelectorAll('input[data-deploy]').forEach((inp) => { inp.value = ''; });
+  for (const action of plan.actions || []) {
+    const inp = document.querySelector(`input[data-deploy="${action.chain}:${action.asset}"]`);
+    if (inp) inp.value = action.rounded;
+  }
+  const lines = [
+    `Plan: ${plan.strategy} ${plan.buyChain} → ${plan.sellChain}`,
+    `Trade size: $${plan.tradeSizeUsd} with ${plan.bufferPct}% buffer`,
+    `Operator: ${plan.operator}`,
+    '',
+    ...(plan.actions?.length ? plan.actions.map((a) => `${CHAIN_INFO[a.chain].label}: send ${a.rounded} ${a.asset.toUpperCase()}`) : ['No deficits. Operator wallet is funded for this profile.']),
+  ];
+  $('deploy-output').textContent = lines.join('\n');
+}
 
 async function runDeployTransfers() {
   if (!window.ethereum || !account) { alert('MetaMask not connected.'); return; }
@@ -910,15 +952,22 @@ async function runDeployTransfers() {
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: info.hex }],
       });
-      const tokenAddr = info[t.asset];
-      const decimals = t.asset === 'usdc' ? 6 : 18;
-      const amountHex = '0x' + bigIntFromHuman(t.amount, decimals).toString(16);
-      // ERC20 transfer(address,uint256) selector + padded args
-      const data = encodeErc20Transfer(operatorAddress, amountHex);
-      const txHash = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [{ from: account, to: tokenAddr, data }],
-      });
+      let txHash;
+      if (t.asset === 'eth') {
+        txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{ from: account, to: operatorAddress, value: '0x' + bigIntFromHuman(t.amount, 18).toString(16) }],
+        });
+      } else {
+        const tokenAddr = info[t.asset];
+        const decimals = t.asset === 'usdc' ? 6 : 18;
+        const amountHex = '0x' + bigIntFromHuman(t.amount, decimals).toString(16);
+        const data = encodeErc20Transfer(operatorAddress, amountHex);
+        txHash = await window.ethereum.request({
+          method: 'eth_sendTransaction',
+          params: [{ from: account, to: tokenAddr, data }],
+        });
+      }
       out.push(` — tx ${txHash}`);
     } catch (e) {
       out.push(` — FAILED: ${e.message?.slice(0, 120) || e.code || 'unknown'}`);
