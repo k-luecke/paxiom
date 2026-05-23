@@ -154,10 +154,15 @@ export function buildBalancePlan({
   for (const chain of chains) {
     const current = balances[chain]?.ok ? balances[chain] : { usdc: 0, weth: 0, native: 0 };
     const target = targets[chain];
+    const nativeReserve = target.native;
+    const rawWethDeficit = Math.max(0, target.weth - Number(current.weth || 0));
+    const nativeAvailableToWrap = Math.max(0, Number(current.native || 0) - nativeReserve);
+    const wethCoveredByNative = Math.min(rawWethDeficit, nativeAvailableToWrap);
+    const remainingWethDeficit = Math.max(0, rawWethDeficit - wethCoveredByNative);
     const deficits = {
       usdc: Math.max(0, target.usdc - Number(current.usdc || 0)),
-      weth: Math.max(0, target.weth - Number(current.weth || 0)),
-      eth: Math.max(0, target.native - Number(current.native || 0)),
+      weth: 0,
+      eth: Math.max(0, nativeReserve - Number(current.native || 0)) + remainingWethDeficit,
     };
     perChain[chain] = { target, current, deficits, ok: Object.values(deficits).every((v) => v <= 0.0000001) };
     for (const [asset, amount] of Object.entries(deficits)) {
@@ -183,6 +188,7 @@ export function buildBalancePlan({
       route: mode === 'route'
         ? 'funds only the selected buy/sell direction'
         : 'funds both chains with USDC and WETH so either direction can fire',
+      wethFunding: 'WETH deficits are covered by existing or newly funded native ETH; the dust test wraps ETH to WETH as needed.',
     },
     perChain,
     actions,

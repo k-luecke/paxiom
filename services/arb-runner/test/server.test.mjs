@@ -89,12 +89,11 @@ test('balance planner computes route and pair deficits', async () => {
     assert.equal(route.ok, false);
     assert.ok(Math.abs(route.perChain.optimism.deficits.usdc - 0.85) < 1e-9);
     assert.ok(Math.abs(route.perChain.optimism.deficits.eth - 0.001) < 1e-12);
-    assert.ok(Math.abs(route.perChain.base.deficits.weth - 0.00045) < 1e-12);
+    assert.equal(route.perChain.base.deficits.weth, 0);
     assert.equal(route.perChain.base.deficits.eth, 0);
     assert.deepEqual(route.actions.map((a) => [a.chain, a.asset, a.rounded]), [
       ['optimism', 'usdc', 0.85],
       ['optimism', 'eth', 0.001],
-      ['base', 'weth', 0.00045],
     ]);
 
     const pair = ctx.mod.buildBalancePlan({
@@ -107,7 +106,8 @@ test('balance planner computes route and pair deficits', async () => {
       gasEth: 0.001,
     });
     assert.ok(pair.actions.some((a) => a.chain === 'base' && a.asset === 'usdc'));
-    assert.ok(pair.actions.some((a) => a.chain === 'optimism' && a.asset === 'weth'));
+    assert.ok(pair.actions.some((a) => a.chain === 'optimism' && a.asset === 'eth'));
+    assert.ok(!pair.actions.some((a) => a.asset === 'weth'));
   } finally { ctx.cleanup(); }
 });
 

@@ -101,6 +101,9 @@ const ERC20_ABI = [
   { name: 'allowance', type: 'function', stateMutability: 'view',
     inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },
 ];
+const WETH_ABI = [
+  { name: 'deposit', type: 'function', stateMutability: 'payable', inputs: [], outputs: [] },
+];
 
 // ─── load operator key ───────────────────────────────────────
 const PAXIOM_DIR = process.env.PAXIOM_DIR || join(homedir(), 'paxiom');
@@ -163,9 +166,14 @@ async function main() {
   if (usdcBal < TRADE_USDC) fatal(`insufficient USDC on ${BUY_CHAIN}`);
   // crude WETH bound (assume $1500/ETH as conservative ceiling = bigger required WETH)
   const minWeth = (TRADE_USDC * 10n ** 18n) / (1500n * 10n ** 6n);
-  if (wethBal < minWeth) fatal(`insufficient WETH on ${SELL_CHAIN} (need ${(Number(minWeth) / 1e18).toFixed(6)})`);
+  const wethShortfallBound = wethBal < minWeth ? minWeth - wethBal : 0n;
   if (gasBuy < 10n ** 14n)  fatal(`gas ETH < 0.0001 on ${BUY_CHAIN}`);
-  if (gasSell < 10n ** 14n) fatal(`gas ETH < 0.0001 on ${SELL_CHAIN}`);
+  if (gasSell < 10n ** 14n + wethShortfallBound) {
+    fatal(`insufficient WETH/native ETH on ${SELL_CHAIN} (need ${(Number(minWeth) / 1e18).toFixed(6)} WETH or enough ETH to wrap it)`);
+  }
+  if (wethShortfallBound > 0n) {
+    log(`  ${SELL_CHAIN} WETH shortfall can be covered by wrapping native ETH.`);
+  }
   log('  OK.');
   log('');
 
@@ -194,6 +202,25 @@ async function main() {
     fatal(`estimated net ≤ 0 — abort. re-run with --force to execute anyway (path test, will lose ~$${(-estNet).toFixed(2)})`);
   }
   log('');
+
+  // 2b. Auto-wrap native ETH on the sell chain if the sell leg needs WETH.
+  const latestWethBal = await withRetry('sell WETH before wrap', () => sellP.readContract({ address: sell.weth, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }));
+  if (latestWethBal < wethOut) {
+    const wrapAmount = wethOut - latestWethBal;
+    log('─ 2b. Wrap native ETH → WETH on sell chain ─');
+    log(`  wrapping ${(Number(wrapAmount) / 1e18).toFixed(8)} ETH on ${SELL_CHAIN}`);
+    const wrapHash = await sellW.sendTransaction({
+      to: sell.weth,
+      value: wrapAmount,
+      gas: 60000n,
+      data: encodeFunctionData({ abi: WETH_ABI, functionName: 'deposit', args: [] }),
+    });
+    log(`  wrap → ${EXPLORERS[SELL_CHAIN]}/tx/${wrapHash}`);
+    const wrapReceipt = await sellP.waitForTransactionReceipt({ hash: wrapHash, timeout: 60_000 });
+    if (wrapReceipt.status !== 'success') fatal(`wrap reverted on ${SELL_CHAIN}`);
+    log(`  wrap confirmed (block ${wrapReceipt.blockNumber})`);
+    log('');
+  }
 
   // 3. amountOutMinimum from quote + slippage
   const buyMinOut  = (wethOut * (SLIPPAGE_DENOM - SLIPPAGE_BPS)) / SLIPPAGE_DENOM;
