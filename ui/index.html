@@ -369,6 +369,15 @@ async function authedFetch(url, opts = {}) {
   return r;
 }
 
+async function readJsonResponse(resp) {
+  const text = await resp.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!resp.ok) {
+    throw new Error(body.error || body.detail || `HTTP ${resp.status}`);
+  }
+  return body;
+}
+
 async function init() {
   await loadCatalog();
   await probeHealth();
@@ -552,18 +561,18 @@ async function runCrossChainDustTest() {
   out.style.display = 'block';
   out.textContent = '';
   try {
-    const started = await authedFetch('/api/arb/test-crosschain-dust', {
+    const started = await readJsonResponse(await authedFetch('/api/arb/test-crosschain-dust', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ buyChain, sellChain, sizeUsd, slippageBps }),
-    }).then((r) => r.json());
-    if (started.error) throw new Error(started.error);
+    }));
     out.textContent = `${started.command}\n\n`;
     const deadline = Date.now() + 5 * 60 * 1000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
-      const status = await fetch('/api/arb/test-crosschain-dust-status').then((r) => r.json()).catch(() => null);
+      const status = await fetch('/api/arb/test-crosschain-dust-status').then(readJsonResponse).catch((e) => ({ error: e.message }));
       if (!status) continue;
+      if (status.error) throw new Error(status.error);
       pill.textContent = status.active ? 'dust running' : `dust exit ${status.exitCode}`;
       out.textContent = `${status.command || started.command}\n\n${status.output || ''}`;
       if (!status.active) break;

@@ -130,8 +130,7 @@ export function createApp() {
         if (!authOrReject(req, res)) return;
         return proxyJson(res, runnerUrl('/v1/runner/test-crosschain-loop'), 'POST', req);
       }
-      res.writeHead(404);
-      return res.end();
+      return sendJson(res, 404, { error: 'not_found', detail: url.pathname });
     } catch (e) {
       const status = Number.isInteger(e.status) ? e.status : 500;
       const error = status === 403 ? 'forbidden' : status === 500 ? 'ui_server_error' : 'bad_request';
