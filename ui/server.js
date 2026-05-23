@@ -108,6 +108,10 @@ export function createApp() {
       if (req.method === 'GET' && url.pathname === '/api/arb/balance-plan') {
         return proxyJson(res, runnerUrl(`/v1/runner/balance-plan${url.search}`));
       }
+      if (req.method === 'GET' && url.pathname === '/api/arb/funding-quote') {
+        if (!authOrReject(req, res)) return;
+        return sendJson(res, 200, await fundingQuote(url.searchParams));
+      }
       if (req.method === 'POST' && url.pathname === '/api/arb/test-roundtrip') {
         if (!authOrReject(req, res)) return;
         return proxyJson(res, runnerUrl('/v1/runner/test-roundtrip'), 'POST', req);
@@ -155,6 +159,74 @@ function runnerUrl(path) {
   const host = process.env.ARB_RUNNER_HOST || '127.0.0.1';
   const port = process.env.ARB_RUNNER_PORT || 8086;
   return `http://${host}:${port}${path}`;
+}
+
+const QUOTE_CHAINS = {
+  optimism: 10,
+  base: 8453,
+  arbitrum: 42161,
+};
+const QUOTE_TOKENS = {
+  optimism: {
+    eth: 'ETH',
+    usdc: 'USDC',
+    weth: '0x4200000000000000000000000000000000000006',
+  },
+  base: {
+    eth: 'ETH',
+    usdc: 'USDC',
+    weth: '0x4200000000000000000000000000000000000006',
+  },
+  arbitrum: {
+    eth: 'ETH',
+    usdc: 'USDC',
+    weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+  },
+};
+
+async function fundingQuote(params) {
+  const fromChain = params.get('fromChain') || 'base';
+  const toChain = params.get('toChain') || '';
+  const toAsset = params.get('toAsset') || '';
+  const fromAddress = params.get('fromAddress') || '';
+  const toAddress = params.get('toAddress') || '';
+  const toAmount = params.get('toAmount') || '';
+  if (fromChain !== 'base') throw badRequest('only Base ETH source funding is enabled for now');
+  if (!QUOTE_CHAINS[toChain]) throw badRequest('unknown toChain');
+  if (!QUOTE_TOKENS[toChain]?.[toAsset]) throw badRequest('unknown toAsset');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(fromAddress)) throw badRequest('fromAddress must be a 20-byte hex address');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(toAddress)) throw badRequest('toAddress must be a 20-byte hex address');
+  if (!/^[0-9]+$/.test(toAmount) || BigInt(toAmount) <= 0n) throw badRequest('toAmount must be positive base units');
+
+  const quoteUrl = new URL('https://li.quest/v1/quote/toAmount');
+  quoteUrl.search = new URLSearchParams({
+    fromChain: String(QUOTE_CHAINS[fromChain]),
+    toChain: String(QUOTE_CHAINS[toChain]),
+    fromToken: 'ETH',
+    toToken: QUOTE_TOKENS[toChain][toAsset],
+    fromAddress,
+    toAddress,
+    toAmount,
+    slippage: '0.01',
+    order: 'CHEAPEST',
+    integrator: 'paxiom',
+  }).toString();
+  const upstream = await fetch(quoteUrl, { headers: { Accept: 'application/json' } });
+  const text = await upstream.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = { error: 'quote_parse_failed', detail: text.slice(0, 500) }; }
+  if (!upstream.ok) {
+    const err = badRequest(body.message || body.error || `quote failed (${upstream.status})`);
+    err.quote = body;
+    throw err;
+  }
+  return body;
+}
+
+function badRequest(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
 }
 
 // Privileged routes require a valid session token from a successful SIWE login.

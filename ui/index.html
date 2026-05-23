@@ -1099,6 +1099,7 @@ function renderDeploySummary(plan) {
       <span class="deploy-quick-actions">
         <button data-switch-chain="${escapeHtml(a.chain)}" style="height:26px;padding:0 8px">Switch</button>
         ${a.asset === 'eth' ? '' : `<button data-watch-token="${escapeHtml(a.chain)}:${escapeHtml(a.asset)}" style="height:26px;padding:0 8px">Show ${escapeHtml(symbol)}</button>`}
+        ${a.chain === 'base' ? '' : `<button data-bridge-from-base="${escapeHtml(a.chain)}:${escapeHtml(a.asset)}:${escapeHtml(String(a.rounded))}" style="height:26px;padding:0 8px">Bridge from Base ETH</button>`}
       </span>`;
     return row;
   });
@@ -1112,6 +1113,9 @@ function bindDeployHelpers() {
   });
   document.querySelectorAll('button[data-watch-token]').forEach((btn) => {
     btn.onclick = () => watchToken(btn.dataset.watchToken);
+  });
+  document.querySelectorAll('button[data-bridge-from-base]').forEach((btn) => {
+    btn.onclick = () => bridgeFromBaseEth(btn.dataset.bridgeFromBase);
   });
 }
 
@@ -1166,7 +1170,7 @@ async function runDeployTransfers() {
       '',
       ...issues.map((issue) => `- ${issue}`),
       '',
-      'Add the missing asset to MetaMask on that network, then retry this same funding plan.',
+      'Use the bridge buttons above when your available balance is Base ETH, or add the missing asset to MetaMask on that network.',
     ].join('\n');
     return;
   }
@@ -1265,6 +1269,68 @@ function formatAmount(n, decimals = 6) {
   const value = Number(n);
   if (!Number.isFinite(value)) return '0';
   return value.toFixed(decimals).replace(/\.?0+$/, '');
+}
+
+async function bridgeFromBaseEth(slug) {
+  if (!window.ethereum || !account) { alert('MetaMask not connected.'); return; }
+  if (!operatorAddress) { alert('Operator address not loaded yet.'); return; }
+  const [toChain, toAsset, amountText] = slug.split(':');
+  const amount = Number(amountText);
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Invalid bridge amount.'); return; }
+  await loadMetaMaskBalances();
+  const baseEth = mmWallet?.balances?.base?.native || 0;
+  const decimals = toAsset === 'usdc' ? 6 : 18;
+  const toAmount = bigIntFromHuman(amount, decimals).toString();
+  $('deploy-output').textContent = `Getting bridge quote from Base ETH to ${CHAIN_INFO[toChain].label} ${toAsset.toUpperCase()}…`;
+  const quote = await readJsonResponse(await authedFetch(`/api/arb/funding-quote?${new URLSearchParams({
+    fromChain: 'base',
+    toChain,
+    toAsset,
+    fromAddress: account,
+    toAddress: operatorAddress,
+    toAmount,
+  })}`));
+  const fromEth = Number(BigInt(quote.action?.fromAmount || '0')) / 1e18;
+  const gasPad = DEPLOY_GAS_BUFFER_ETH * 2;
+  if (baseEth + 1e-12 < fromEth + gasPad) {
+    $('deploy-output').textContent = `Bridge quote needs about ${formatAmount(fromEth)} Base ETH plus gas, but MetaMask has ${formatAmount(baseEth)} Base ETH.`;
+    return;
+  }
+  const provider = quote.toolDetails?.name || quote.tool || 'bridge provider';
+  const received = quote.estimate?.toAmount
+    ? Number(BigInt(quote.estimate.toAmount)) / (10 ** decimals)
+    : amount;
+  const ok = confirm(
+    `Bridge from Base ETH?\n\n` +
+    `Provider: ${provider}\n` +
+    `Spend: about ${formatAmount(fromEth)} ETH on Base, plus Base gas\n` +
+    `Deliver: about ${formatAmount(received, decimals === 6 ? 2 : 6)} ${toAsset.toUpperCase()} on ${CHAIN_INFO[toChain].label}\n` +
+    `Recipient: ${short(operatorAddress)}\n\n` +
+    `MetaMask will show the final transaction before you approve.`
+  );
+  if (!ok) {
+    $('deploy-output').textContent = 'Bridge cancelled.';
+    return;
+  }
+  await switchToChain('base');
+  const tx = quote.transactionRequest;
+  if (!tx?.to || !tx?.data) throw new Error('bridge quote did not include a transaction request');
+  const txHash = await window.ethereum.request({
+    method: 'eth_sendTransaction',
+    params: [{
+      from: account,
+      to: tx.to,
+      value: tx.value || '0x0',
+      data: tx.data,
+    }],
+  });
+  $('deploy-output').textContent = [
+    `Bridge submitted via ${provider}.`,
+    `tx: ${txHash}`,
+    '',
+    `Waiting for the bridge to deliver ${toAsset.toUpperCase()} to ${CHAIN_INFO[toChain].label}. Refresh balances in a minute or two.`,
+  ].join('\n');
+  setTimeout(refreshArb, 60000);
 }
 
 function bigIntFromHuman(human, decimals) {

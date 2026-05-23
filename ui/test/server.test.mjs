@@ -158,6 +158,7 @@ const PRIVILEGED_ROUTES = [
   ['POST', '/api/arb/test-crosschain-dust'],
   ['POST', '/api/arb/test-half-fill'],
   ['POST', '/api/arb/test-crosschain-loop'],
+  ['GET', '/api/arb/funding-quote'],
 ];
 
 test('privileged /api/arb routes reject unauthenticated requests', async () => {
@@ -166,7 +167,9 @@ test('privileged /api/arb routes reject unauthenticated requests', async () => {
   const { server, url } = await listen(createApp());
   try {
     for (const [method, path] of PRIVILEGED_ROUTES) {
-      const r = await fetch(`${url}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const init = { method, headers: { 'Content-Type': 'application/json' } };
+      if (method !== 'GET') init.body = '{}';
+      const r = await fetch(`${url}${path}`, init);
       const body = await r.json();
       assert.equal(r.status, 401, `${path} should 401 without session, got ${r.status}`);
       assert.equal(body.error, 'authentication_required');
