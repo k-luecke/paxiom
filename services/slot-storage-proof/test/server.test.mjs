@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { createApp } from '../server.mjs';
 
 process.env.MOCK_LOAD_NETWORK = '1';
+process.env.PAXIOM_PROOF_ARCHIVE_MODE = 'disabled';
+delete process.env.PAXIOM_PROOF_ARCHIVE_REQUIRED;
 
 function listen(app) {
   return new Promise((resolveListen) => {
@@ -33,7 +35,9 @@ test('A-201 returns a signed slot storage proof packet', async () => {
     assert.equal(body.service, 'A-201');
     assert.equal(body.artifact.type, 'slot_storage_proof_packet');
     assert.equal(body.artifact.payload.verified, true);
-    assert.equal(body.auditRecord.target, 'AO/Arweave');
+    assert.equal(body.auditRecord.target, 'Paxiom Proof Archive');
+    assert.equal(body.auditRecord.status, 'archive_disabled');
+    assert.equal(body.auditRecord.archive.mode, 'disabled');
     assert.match(body.platformSignature.responseHash, /^0x[0-9a-f]{64}$/);
   } finally {
     server.close();

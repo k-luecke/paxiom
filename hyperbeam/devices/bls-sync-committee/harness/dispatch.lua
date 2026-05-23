@@ -14,36 +14,77 @@ local json = require("json")
 local HARNESS_BIN = os.getenv("BLS_DEVICE_HARNESS")
     or "/usr/local/bin/bls-device-harness"
 
+local function shell_quote(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+local function read_all(path)
+    local f = io.open(path, "r")
+    if not f then return "" end
+    local body = f:read("*a")
+    f:close()
+    return body
+end
+
+local function write_all(path, body)
+    local f = assert(io.open(path, "w"))
+    f:write(body)
+    f:close()
+end
+
+local function remove(path)
+    if path then os.remove(path) end
+end
+
 local function dispatch(msg)
     local body = msg.body or msg.Body or msg.data or msg.Data
     if not body then
         return { status = 400, body = json.encode({ error = "missing body" }) }
     end
 
-    -- Pipe the request JSON to the bls-device harness on stdin; capture
-    -- stdout. The harness is built from k-luecke/bls-verifier's bls-device
-    -- crate and exposes the same VerifyResponse JSON shape this device
-    -- promises in O-701 / S.02.
-    local cmd = string.format("%s --json", HARNESS_BIN)
-    local proc = io.popen(cmd, "w")
-    proc:write(body)
-    local ok = proc:close()
+    if type(body) ~= "string" then
+        body = json.encode(body)
+    end
+
+    -- Lua's standard io.popen is one-directional. Use temp files so the
+    -- HyperBEAM device can feed stdin to the Rust harness and return its
+    -- stdout verbatim. The Rust process owns BLS verification, x402 truth
+    -- fields, platform signature evidence, and AO mock/durable status.
+    local req_path = os.tmpname()
+    local err_path = os.tmpname()
+    write_all(req_path, body)
+
+    local cmd = table.concat({
+        shell_quote(HARNESS_BIN),
+        "--json",
+        "<",
+        shell_quote(req_path),
+        "2>",
+        shell_quote(err_path),
+    }, " ")
+    local proc = io.popen(cmd, "r")
+    local stdout = proc:read("*a")
+    local ok, why, code = proc:close()
+    local stderr = read_all(err_path)
+    remove(req_path)
+    remove(err_path)
 
     if not ok then
         return {
             status = 502,
-            body = json.encode({ error = "bls-device harness failed", harness = HARNESS_BIN })
+            body = json.encode({
+                error = "bls-device harness failed",
+                harness = HARNESS_BIN,
+                reason = why,
+                code = code,
+                detail = stderr,
+            })
         }
     end
 
-    -- The harness writes the response to a known temp file (path supplied
-    -- via env). Real wiring is filed for follow-up — this stub keeps the
-    -- HyperBEAM-facing contract documented.
     return {
         status = 200,
-        body = json.encode({
-            note = "Lua harness stub — wire bls-device-harness stdout once the harness binary lands",
-        })
+        body = stdout
     }
 end
 

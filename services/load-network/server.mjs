@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LoadNetworkClient } from '../../load-network/client.mjs';
+import { ErigonProofClient } from '../../load-network/erigon-client.mjs';
 import { reconstructAccountState, reconstructStorageSlot } from '../../load-network/reconstruct.mjs';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
 import { requirePayment, paymentResponseHeaders } from '../shared/x402.mjs';
+import { assertNotStrictMode } from '../shared/deployment.mjs';
 
 const PORT = Number(process.env.LOAD_NETWORK_SERVICE_PORT || 8081);
 const HOST = process.env.LOAD_NETWORK_SERVICE_HOST || '127.0.0.1';
@@ -64,7 +66,11 @@ async function handleStorage(req, res, client, resource) {
 
 function defaultClient() {
   if (process.env.MOCK_LOAD_NETWORK === '1') {
+    assertNotStrictMode('MOCK_LOAD_NETWORK fixture client', 'MOCK_LOAD_NETWORK');
     return new LoadNetworkClient({ fetchImpl: fixtureFetch() });
+  }
+  if (process.env.PAXIOM_STATE_SOURCE === 'erigon') {
+    return new ErigonProofClient();
   }
   return new LoadNetworkClient();
 }

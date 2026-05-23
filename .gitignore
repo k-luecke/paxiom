@@ -17,6 +17,11 @@ ui/node_modules/
 
 ui/node_modules
 
+# local operator state and private runtime material
+.arb-runner/
+.paxiom/
+.executor/
+
 # phase-0 substrate
 load-network/fixtures/.tmp/
 services/sync-committee/.cache/

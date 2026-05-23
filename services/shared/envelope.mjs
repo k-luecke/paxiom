@@ -1,4 +1,5 @@
 import { createHash, sign } from 'node:crypto';
+import { assertEnvPair, isStrictDeployment, deploymentMode } from './deployment.mjs';
 
 export function createServiceEnvelope({
   service,
@@ -18,11 +19,12 @@ export function createServiceEnvelope({
       payload,
     },
     auditRecord: {
-      target: 'AO/Arweave',
+      target: audit.target || 'AO/Arweave',
       status: audit.status || 'pending_write',
       aoMessageId: audit.aoMessageId || null,
       arweaveTxId: audit.arweaveTxId || null,
       evidenceTags: audit.evidenceTags || [],
+      archive: audit.archive || null,
     },
     payment: payment ? {
       mode: payment.mode,
@@ -38,6 +40,7 @@ export function createServiceEnvelope({
 }
 
 function signResponse(responseHash) {
+  assertEnvPair('PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM', 'PAXIOM_RESPONSE_SIGNING_KEY_ID');
   const privateKey = process.env.PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM;
   if (privateKey) {
     const sig = sign(null, Buffer.from(responseHash, 'hex'), privateKey).toString('base64');
@@ -47,6 +50,11 @@ function signResponse(responseHash) {
       responseHash: `0x${responseHash}`,
       signature: sig,
     };
+  }
+  if (isStrictDeployment()) {
+    throw new Error(
+      `PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM is required in ${deploymentMode()} mode`,
+    );
   }
   return {
     algorithm: 'dev-sha256',

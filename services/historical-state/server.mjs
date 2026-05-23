@@ -1,10 +1,13 @@
 import { createServer } from 'node:http';
 import { LoadNetworkClient } from '../../load-network/client.mjs';
+import { ErigonProofClient } from '../../load-network/erigon-client.mjs';
 import { reconstructAccountState, reconstructStorageSlot } from '../../load-network/reconstruct.mjs';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
 import { createServiceEnvelope } from '../shared/envelope.mjs';
 import { requirePayment, paymentResponseHeaders } from '../shared/x402.mjs';
 import { fixtureFetch } from '../load-network/fixture-client.mjs';
+import { assertNotStrictMode } from '../shared/deployment.mjs';
+import { archiveEvidence } from '../shared/proof-archive.mjs';
 
 const PORT = Number(process.env.HISTORICAL_STATE_PORT || 8095);
 const HOST = process.env.HISTORICAL_STATE_HOST || '127.0.0.1';
@@ -28,15 +31,26 @@ async function handleQuery(req, res, client, resource) {
     const result = body.slot
       ? await reconstructStorageSlot({ blockNumber: body.blockNumber, address: body.address, slot: body.slot, client })
       : await reconstructAccountState({ blockNumber: body.blockNumber, address: body.address, client });
+    const artifactType = body.slot ? 'verified_historical_storage_state' : 'verified_historical_account_state';
+    const evidenceTags = ['service:A-205', `block:${result.block_number}`, `address:${result.address}`];
+    if (result.slot) evidenceTags.push(`slot:${result.slot}`);
+    const audit = await archiveEvidence({
+      service: 'A-205',
+      artifactType,
+      payload: result,
+      request: {
+        blockNumber: body.blockNumber,
+        address: body.address,
+        slot: body.slot || null,
+      },
+      evidenceTags,
+    });
     const envelope = createServiceEnvelope({
       service: 'A-205',
       serviceName: 'Verified Historical State',
-      artifactType: body.slot ? 'verified_historical_storage_state' : 'verified_historical_account_state',
+      artifactType,
       payment: paid.payment,
-      audit: {
-        status: 'pending_write',
-        evidenceTags: ['service:A-205', `block:${result.block_number}`, `address:${result.address}`],
-      },
+      audit,
       payload: result,
     });
     return sendJson(res, 200, envelope, paymentResponseHeaders(paid.payment, { correlation: result.block_hash }));
@@ -47,7 +61,11 @@ async function handleQuery(req, res, client, resource) {
 
 function defaultClient() {
   if (process.env.MOCK_LOAD_NETWORK === '1') {
+    assertNotStrictMode('MOCK_LOAD_NETWORK fixture client', 'MOCK_LOAD_NETWORK');
     return new LoadNetworkClient({ fetchImpl: fixtureFetch() });
+  }
+  if (process.env.PAXIOM_STATE_SOURCE === 'erigon') {
+    return new ErigonProofClient();
   }
   return new LoadNetworkClient();
 }

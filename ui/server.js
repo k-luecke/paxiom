@@ -14,13 +14,16 @@ const sessions = new Map();
 const nonces = new Map();
 
 const SERVICE_HEALTH = [
-  { id: 'CATALOG', url: 'http://127.0.0.1:8090/healthz' },
-  { id: 'A-201', url: 'http://127.0.0.1:8091/healthz' },
-  { id: 'A-202', url: 'http://127.0.0.1:8080/healthz' },
-  { id: 'A-203', url: 'http://127.0.0.1:8093/healthz' },
-  { id: 'A-204', url: 'http://127.0.0.1:8094/healthz' },
-  { id: 'A-205', url: 'http://127.0.0.1:8095/healthz' },
-  { id: 'COMPLIANCE-001', url: 'http://127.0.0.1:8083/healthz' },
+  { id: 'CATALOG', host: 'SERVICE_CATALOG_HOST', port: 'SERVICE_CATALOG_PORT', defaultPort: 8090 },
+  { id: 'A-201', host: 'SLOT_STORAGE_PROOF_HOST', port: 'SLOT_STORAGE_PROOF_PORT', defaultPort: 8091 },
+  { id: 'A-202', host: 'SYNC_COMMITTEE_HOST', port: 'SYNC_COMMITTEE_PORT', defaultPort: 8080 },
+  { id: 'A-203', host: 'CROSS_CHAIN_MESSAGE_HOST', port: 'CROSS_CHAIN_MESSAGE_PORT', defaultPort: 8093 },
+  { id: 'A-204', host: 'SIMULATION_SERVICE_HOST', port: 'SIMULATION_SERVICE_PORT', defaultPort: 8094 },
+  { id: 'A-205', host: 'HISTORICAL_STATE_HOST', port: 'HISTORICAL_STATE_PORT', defaultPort: 8095 },
+  { id: 'COMPLIANCE-001', host: 'COMPLIANCE_SERVICE_HOST', port: 'COMPLIANCE_SERVICE_PORT', defaultPort: 8083 },
+  { id: 'PRICE-SCANNER', host: 'PRICE_SCANNER_HOST', port: 'PRICE_SCANNER_PORT', defaultPort: 8084 },
+  { id: 'UNWIND-MONITOR', host: 'UNWIND_MONITOR_HOST', port: 'UNWIND_MONITOR_PORT', defaultPort: 8085 },
+  { id: 'ARB-RUNNER', host: 'ARB_RUNNER_HOST', port: 'ARB_RUNNER_PORT', defaultPort: 8086 },
 ];
 
 export function createApp() {
@@ -47,6 +50,76 @@ export function createApp() {
       if (req.method === 'GET' && url.pathname === '/healthz') {
         return sendJson(res, 200, { ok: true, service: 'PAXIOM-UI' });
       }
+      if (req.method === 'GET' && url.pathname === '/api/arb/opportunities') {
+        return proxyJson(res, scannerUrl(`/v1/scanner/opportunities${url.search}`));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/scanner-status') {
+        return proxyJson(res, scannerUrl('/v1/scanner/status'));
+      }
+      if (req.method === 'POST' && (url.pathname === '/api/arb/scanner-start' || url.pathname === '/api/arb/scanner-stop')) {
+        if (!authOrReject(req, res)) return;
+        const action = url.pathname.endsWith('start') ? 'start' : 'stop';
+        return proxyJson(res, scannerUrl(`/v1/scanner/${action}`), 'POST');
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/unwind-events') {
+        return proxyJson(res, unwindUrl(`/v1/unwind/events${url.search}`));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/unwind-status') {
+        return proxyJson(res, unwindUrl('/v1/unwind/status'));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/runner-status') {
+        return proxyJson(res, runnerUrl('/v1/runner/status'));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/runner-wallet') {
+        return proxyJson(res, runnerUrl('/v1/runner/wallet'));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/runner-performance') {
+        return proxyJson(res, runnerUrl('/v1/runner/performance'));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/trades') {
+        return proxyJson(res, runnerUrl(`/v1/runner/trades${url.search}`));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/runner-start') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/start'), 'POST', req);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/runner-stop') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/stop'), 'POST');
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/emergency-close') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/emergency-close'), 'POST');
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/clear-emergency') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/clear-emergency'), 'POST');
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/external-wallet') {
+        return proxyJson(res, runnerUrl(`/v1/runner/external-wallet${url.search}`));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/withdraw') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/withdraw'), 'POST', req);
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/preflight') {
+        return proxyJson(res, runnerUrl(`/v1/runner/preflight${url.search}`));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/test-roundtrip') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/test-roundtrip'), 'POST', req);
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/test-roundtrip-status') {
+        return proxyJson(res, runnerUrl('/v1/runner/test-roundtrip-status'));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/test-half-fill') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/test-half-fill'), 'POST', req);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/arb/test-crosschain-loop') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/test-crosschain-loop'), 'POST', req);
+      }
       res.writeHead(404);
       return res.end();
     } catch (e) {
@@ -55,6 +128,73 @@ export function createApp() {
       return sendJson(res, status, { error, detail: e.message });
     }
   });
+}
+
+function scannerUrl(path) {
+  const host = process.env.PRICE_SCANNER_HOST || '127.0.0.1';
+  const port = process.env.PRICE_SCANNER_PORT || 8084;
+  return `http://${host}:${port}${path}`;
+}
+
+function unwindUrl(path) {
+  const host = process.env.UNWIND_MONITOR_HOST || '127.0.0.1';
+  const port = process.env.UNWIND_MONITOR_PORT || 8085;
+  return `http://${host}:${port}${path}`;
+}
+
+function runnerUrl(path) {
+  const host = process.env.ARB_RUNNER_HOST || '127.0.0.1';
+  const port = process.env.ARB_RUNNER_PORT || 8086;
+  return `http://${host}:${port}${path}`;
+}
+
+// Privileged routes require a valid session token from a successful SIWE login.
+// The token is issued by /api/session/verify (sessions Map) and the UI sends it
+// as `Authorization: Bearer <token>` on each privileged call.
+function requireSession(req) {
+  const auth = req.headers['authorization'];
+  if (!auth) return null;
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  return sessions.get(token) || null;
+}
+
+function authOrReject(req, res) {
+  if (process.env.PAXIOM_DISABLE_AUTH === '1') return { address: 'auth-disabled' };
+  const session = requireSession(req);
+  if (!session) {
+    sendJson(res, 401, { error: 'authentication_required', detail: 'connect MetaMask and sign the login challenge' });
+    return null;
+  }
+  return session;
+}
+
+async function proxyJson(res, url, method = 'GET', sourceReq = null) {
+  try {
+    const init = { method };
+    if (sourceReq && method !== 'GET' && method !== 'HEAD') {
+      // Forward JSON body for POSTs that carry config (e.g. runner-start).
+      let body = '';
+      try {
+        body = await new Promise((resolve, reject) => {
+          const chunks = [];
+          sourceReq.on('data', (c) => chunks.push(c));
+          sourceReq.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+          sourceReq.on('error', reject);
+        });
+      } catch {}
+      if (body) {
+        init.headers = { 'Content-Type': 'application/json' };
+        init.body = body;
+      }
+    }
+    const upstream = await fetch(url, init);
+    const text = await upstream.text();
+    res.writeHead(upstream.status, { 'Content-Type': 'application/json' });
+    return res.end(text);
+  } catch (e) {
+    return sendJson(res, 502, { error: 'upstream_unreachable', detail: e.message });
+  }
 }
 
 function createLoginChallenge(address) {
@@ -137,15 +277,17 @@ function allowedWallets() {
 
 async function checkServices() {
   return Promise.all(SERVICE_HEALTH.map(async (service) => {
+    const url = healthUrl(service);
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 900);
     try {
-      const resp = await fetch(service.url, { signal: controller.signal });
+      const resp = await fetch(url, { signal: controller.signal });
       return {
         id: service.id,
         ok: resp.ok,
         status: resp.status,
+        url,
         latencyMs: Date.now() - startedAt,
       };
     } catch (e) {
@@ -153,6 +295,7 @@ async function checkServices() {
         id: service.id,
         ok: false,
         status: 0,
+        url,
         latencyMs: Date.now() - startedAt,
         error: e.name === 'AbortError' ? 'timeout' : 'offline',
       };
@@ -162,8 +305,19 @@ async function checkServices() {
   }));
 }
 
+function healthUrl(service) {
+  const host = process.env[service.host] || '127.0.0.1';
+  const port = Number(process.env[service.port] || service.defaultPort);
+  return `http://${host}:${port}/healthz`;
+}
+
 function sendHtml(res, html) {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'Content-Type':  'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma':        'no-cache',
+    'Expires':       '0',
+  });
   res.end(html);
 }
 

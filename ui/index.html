@@ -70,7 +70,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .notice{border-left:3px solid var(--accent);padding:10px 12px;background:#eef6f4;color:#24423f;border-radius:4px}
 .warn{border-left-color:var(--accent2);background:#faf4e8;color:#4c3820}
-.hidden{display:none}
+.hidden{display:none !important}
+.modal-overlay{position:fixed;inset:0;background:rgba(25,25,25,.5);z-index:50;display:grid;place-items:center}
 @media(max-width:980px){
   main{grid-template-columns:1fr}
   aside{border-right:0;border-bottom:1px solid var(--line)}
@@ -101,8 +102,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
   <aside>
     <div class="side-title">Services</div>
     <div class="nav" id="service-nav"></div>
+    <div class="side-title" style="margin-top:24px">Operations</div>
+    <div class="nav">
+      <button id="nav-arb"><span class="nav-id">ARB</span><span class="nav-name">Arb Console</span></button>
+    </div>
   </aside>
-  <section class="workspace">
+  <section class="workspace" id="service-workspace">
     <div class="topline">
       <div>
         <h1 id="service-title">Loading catalog</h1>
@@ -161,6 +166,153 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
       </div>
     </section>
   </section>
+
+  <section class="workspace hidden" id="arb-workspace">
+    <div class="topline">
+      <div>
+        <h1>Arb Console</h1>
+        <p class="lede">Cross-chain inventory arb — live opportunity stream and half-fill monitor. Execute leg signing routes through the connected MetaMask wallet (coming next).</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="arb-refresh">Refresh</button>
+        <button id="arb-scanner-toggle" class="primary">Start scanner</button>
+      </div>
+    </div>
+
+    <div class="service-grid" id="arb-metrics"></div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Live Opportunities</div>
+          <span class="pill" id="arb-opps-pill">--</span>
+        </div>
+        <div class="panel-body">
+          <div class="field" style="margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label for="arb-min-spread">Min spread (%)</label><input id="arb-min-spread" type="number" step="0.01" value="0.20"></div>
+            <div><label for="arb-limit">Limit</label><input id="arb-limit" type="number" min="1" max="200" value="20"></div>
+          </div>
+          <div class="status-list" id="arb-opps-list"><div class="status-row"><span>No opportunities yet.</span></div></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Unwind Events</div>
+          <span class="pill" id="arb-unwind-pill">--</span>
+        </div>
+        <div class="panel-body">
+          <div class="status-list" id="arb-unwind-list"><div class="status-row"><span>No unwind events yet.</span></div></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Trades</div>
+        <span class="pill" id="arb-trades-pill">--</span>
+      </div>
+      <div class="panel-body">
+        <div class="status-list" id="arb-trades-list"><div class="status-row"><span>No trades yet.</span></div></div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Inventory</div>
+          <span class="pill" id="arb-wallet-pill">--</span>
+        </div>
+        <div class="panel-body">
+          <div class="kv"><span>Operator</span><strong id="arb-wallet-addr" style="font-family:ui-monospace,monospace;font-size:12px">--</strong></div>
+          <div class="kv"><span>MetaMask</span><strong id="arb-mm-addr" style="font-family:ui-monospace,monospace;font-size:12px">connect to view</strong></div>
+          <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:13px">
+            <thead><tr style="text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em">
+              <th style="padding:6px 4px">Chain</th>
+              <th style="padding:6px 4px">Operator USDC / WETH / gas</th>
+              <th style="padding:6px 4px">MetaMask USDC / WETH / gas</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="arb-inv-table"></tbody>
+          </table>
+          <div class="actions" style="margin-top:12px">
+            <button id="arb-copy-addr">Copy operator addr</button>
+            <button id="arb-fund-btn" class="primary">Deploy from MetaMask…</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Engine Control</div>
+          <span class="pill" id="arb-engine-pill">stopped</span>
+        </div>
+        <div class="panel-body">
+          <div class="field" style="margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label for="arb-trade-size">Trade size (USDC)</label><input id="arb-trade-size" type="number" min="100" step="100" value="500"></div>
+            <div><label for="arb-slippage">Slippage (bps)</label><input id="arb-slippage" type="number" min="10" max="500" value="50"></div>
+          </div>
+          <div class="actions">
+            <button id="arb-start-engine" class="primary">Start engine</button>
+            <button id="arb-stop-engine">Stop engine</button>
+            <button id="arb-emergency" style="border-color:var(--bad);color:var(--bad)">Emergency close</button>
+            <button id="arb-clear-emergency" class="hidden">Clear emergency</button>
+          </div>
+          <div class="notice" style="margin-top:10px">Once started, the engine executes capturable opportunities autonomously using the operator wallet. Emergency close halts execution immediately and writes a kill marker the executor honors.</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Performance</div>
+        <span class="pill" id="arb-perf-pill">--</span>
+      </div>
+      <div class="panel-body">
+        <div class="service-grid" id="arb-perf-grid"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Path Test (Base, native ETH)</div>
+        <span class="pill" id="arb-pt-pill">idle</span>
+      </div>
+      <div class="panel-body">
+        <div class="notice">One-click validation: sends ETH from MetaMask to operator on Base, runs a USDC↔WETH round-trip, returns remaining ETH to MetaMask. Cost ≈ $0.40 in gas + pool fees on Base.</div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <div><label for="arb-pt-eth">ETH amount</label><input id="arb-pt-eth" type="number" step="0.001" min="0.001" max="0.05" value="0.005"></div>
+          <div><label for="arb-pt-slip">Slippage (bps)</label><input id="arb-pt-slip" type="number" min="10" max="500" value="50"></div>
+        </div>
+        <div class="actions" style="margin-top:12px">
+          <button id="arb-pt-run" class="primary">Run path test</button>
+          <button id="arb-pt-loop" title="Inject a synthetic BOTH_OK cross-chain loop to verify execution log, unwind monitor, trade list, and performance wiring without using Uniswap">Test loop (no tx)</button>
+          <button id="arb-pt-halfbuy"  title="Inject a synthetic HALF_BUY into execution.log to verify the unwind monitor classifies and surfaces it correctly">Test HALF_BUY (no tx)</button>
+          <button id="arb-pt-halfsell" title="Inject a synthetic HALF_SELL into execution.log to verify the unwind monitor classifies and surfaces it correctly">Test HALF_SELL (no tx)</button>
+        </div>
+        <div class="status-list" id="arb-pt-steps" style="margin-top:14px"></div>
+        <pre id="arb-pt-output" style="margin-top:10px;min-height:60px;display:none"></pre>
+      </div>
+    </section>
+  </section>
+
+  <div id="deploy-modal" class="hidden modal-overlay">
+    <div class="panel" style="width:min(560px,92vw);max-height:90vh;overflow:auto">
+      <div class="panel-head">
+        <div class="panel-title">Deploy capital from MetaMask</div>
+        <button id="deploy-close" class="icon">×</button>
+      </div>
+      <div class="panel-body">
+        <div class="notice warn">Each row sends one ERC20 transfer from your connected MetaMask wallet to the operator address on that chain. MetaMask will prompt you to switch networks between rows.</div>
+        <div id="deploy-rows" style="display:grid;gap:14px;margin-top:14px"></div>
+        <div class="actions" style="margin-top:14px">
+          <button id="deploy-cancel">Cancel</button>
+          <button id="deploy-run" class="primary">Send transfers</button>
+        </div>
+        <pre id="deploy-output" style="margin-top:12px;min-height:80px">Configure amounts above, then click "Send transfers".</pre>
+      </div>
+    </div>
+  </div>
 </main>
 <script>
 const serviceDescriptions = {
@@ -186,6 +338,22 @@ let session = null;
 
 const $ = (id) => document.getElementById(id);
 
+// Wrapper for privileged fetches — attaches the SIWE session token if present,
+// surfaces a 401 with a clear "sign in first" message.
+async function authedFetch(url, opts = {}) {
+  const stored = session?.token || (() => {
+    try { const s = JSON.parse(localStorage.getItem('paxiom.session') || '{}'); return s.token; } catch { return null; }
+  })();
+  const headers = { ...(opts.headers || {}) };
+  if (stored) headers['Authorization'] = `Bearer ${stored}`;
+  const r = await fetch(url, { ...opts, headers });
+  if (r.status === 401) {
+    alert('You need to sign in with MetaMask first (click "Connect MetaMask" / "Sign in" in the header).');
+    throw new Error('authentication_required');
+  }
+  return r;
+}
+
 async function init() {
   await loadCatalog();
   await probeHealth();
@@ -196,6 +364,601 @@ async function init() {
   $('sample-btn').addEventListener('click', resetSample);
   $('copy-btn').addEventListener('click', copyCurl);
   $('mock-btn').addEventListener('click', previewEnvelope);
+  $('nav-arb').addEventListener('click', showArbWorkspace);
+  $('arb-refresh').addEventListener('click', refreshArb);
+  $('arb-scanner-toggle').addEventListener('click', toggleScanner);
+  $('arb-min-spread').addEventListener('change', refreshArb);
+  $('arb-limit').addEventListener('change', refreshArb);
+  $('arb-start-engine').addEventListener('click', startEngine);
+  $('arb-stop-engine').addEventListener('click', stopEngine);
+  $('arb-emergency').addEventListener('click', emergencyClose);
+  $('arb-clear-emergency').addEventListener('click', clearEmergency);
+  $('arb-copy-addr').addEventListener('click', copyOperatorAddr);
+  $('arb-fund-btn').addEventListener('click', deployCapital);
+  $('deploy-close').addEventListener('click', closeDeployModal);
+  $('deploy-cancel').addEventListener('click', closeDeployModal);
+  $('deploy-run').addEventListener('click', runDeployTransfers);
+  $('arb-pt-run').addEventListener('click', runPathTest);
+  $('arb-pt-loop').addEventListener('click', injectCrossChainLoop);
+  $('arb-pt-halfbuy').addEventListener('click',  () => injectHalfFill('buy'));
+  $('arb-pt-halfsell').addEventListener('click', () => injectHalfFill('sell'));
+}
+
+async function injectHalfFill(which) {
+  const r = await authedFetch('/api/arb/test-half-fill', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which, buyChain: 'optimism', sellChain: 'base' }),
+  }).then((r) => r.json()).catch((e) => ({ error: e.message }));
+  const out = $('arb-pt-output');
+  out.style.display = 'block';
+  if (r.error) {
+    out.textContent = `Inject failed: ${r.error}\n`;
+  } else {
+    out.textContent = `Synthetic ${r.forcedCategory} injected (tradeId=${r.tradeId}).\nWatch the Unwind Events panel — should appear within ~30s when the monitor next polls.\n`;
+  }
+  setTimeout(refreshArb, 35000);
+}
+
+// ─── one-click path test ─────────────────────────────────────
+async function injectCrossChainLoop() {
+  const r = await authedFetch('/api/arb/test-crosschain-loop', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category: 'BOTH_OK', buyChain: 'optimism', sellChain: 'base' }),
+  }).then((r) => r.json()).catch((e) => ({ error: e.message }));
+  const out = $('arb-pt-output');
+  out.style.display = 'block';
+  if (r.error) {
+    out.textContent = `Loop rehearsal failed: ${r.error}\n`;
+  } else {
+    out.textContent = `Synthetic cross-chain loop injected (tradeId=${r.tradeId}).\nNo Uniswap, no approvals, no swaps, no transactions. Watch Trades and Unwind Events after the monitor polls.\n`;
+  }
+  setTimeout(refreshArb, 35000);
+}
+
+async function runPathTest() {
+  const btn = $('arb-pt-run');
+  const pill = $('arb-pt-pill');
+  const out = $('arb-pt-output');
+  const stepsEl = $('arb-pt-steps');
+  const eth = parseFloat($('arb-pt-eth').value);
+  const slip = parseInt($('arb-pt-slip').value, 10) || 50;
+  if (!Number.isFinite(eth) || eth <= 0 || eth > 0.05) { alert('ETH amount must be 0.001–0.05'); return; }
+  if (!window.ethereum) { alert('MetaMask not detected.'); return; }
+  if (!account) { await connectWallet(); if (!account) return; }
+  if (!operatorAddress) { alert('Operator address not loaded yet — refresh.'); return; }
+
+  btn.disabled = true;
+  out.style.display = 'block';
+  out.textContent = '';
+  stepsEl.replaceChildren();
+
+  try {
+    // 1. Switch MetaMask to Base
+    pill.textContent = 'switching network';
+    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x2105' }] });
+
+    // 2. Pre-check: does operator have enough ETH (or pre-existing WETH from a prior partial run)?
+    pill.textContent = 'checking operator balance';
+    const opWallet = await fetch('/api/arb/runner-wallet').then((r) => r.json());
+    const opEth  = opWallet?.balances?.base?.native ?? 0;
+    const opWeth = opWallet?.balances?.base?.weth   ?? 0;
+    // 1% tolerance — handles float precision when WETH was wrapped at exactly the
+    // requested amount in a prior run (display rounds, the underlying wei is slightly off).
+    const willSkipWrap = opWeth >= eth * 0.99;
+    const need = willSkipWrap ? 0.0005 : (eth + 0.001); // gas-only if wrap is skipped
+    if (opEth < need) {
+      pill.textContent = 'funding operator (MetaMask)';
+      out.textContent = `Operator: ${opEth.toFixed(6)} ETH, ${opWeth.toFixed(6)} WETH on Base.\nNeed ${need.toFixed(6)} ETH${willSkipWrap ? ' (existing WETH covers trade — gas only)' : ''}.\nSend ${need.toFixed(6)} ETH from MetaMask…\n`;
+      const valueWei = bigIntFromHuman(need, 18);
+      const fundHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: account, to: operatorAddress, value: '0x' + valueWei.toString(16) }],
+      });
+      out.textContent += `Funding tx: ${fundHash}\nWaiting for confirmation…\n`;
+      const fundDeadline = Date.now() + 60000;
+      while (Date.now() < fundDeadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const w = await fetch('/api/arb/runner-wallet').then((r) => r.json()).catch(() => null);
+        if ((w?.balances?.base?.native ?? 0) >= need) { out.textContent += `Funding confirmed.\n\n`; break; }
+      }
+    } else {
+      out.textContent = `Operator: ${opEth.toFixed(6)} ETH, ${opWeth.toFixed(6)} WETH on Base — sufficient${willSkipWrap ? ' (wrap will be skipped)' : ''}.\n\n`;
+    }
+
+    // 3. Kick off the round-trip
+    pill.textContent = 'running round-trip';
+    const startResp = await authedFetch('/api/arb/test-roundtrip', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ethAmount: eth, slippageBps: slip }),
+    }).then((r) => r.json());
+    if (startResp.error) throw new Error(startResp.error);
+
+    // 4. Poll progress
+    let done = false;
+    const stepDeadline = Date.now() + 5 * 60 * 1000;
+    while (!done && Date.now() < stepDeadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const status = await fetch('/api/arb/test-roundtrip-status').then((r) => r.json()).catch(() => null);
+      if (!status) continue;
+      renderPathTestSteps(status);
+      if (!status.active) {
+        done = true;
+        if (status.error) {
+          pill.textContent = 'failed';
+          pill.style.color = 'var(--bad)';
+          out.textContent += `\nFailed: ${status.error}\n`;
+        } else {
+          pill.textContent = 'success';
+          pill.style.color = 'var(--good)';
+          const s = status.summary;
+          out.textContent += `\n✅ Path validated end-to-end.\n  ETH: ${s.ethBefore.toFixed(8)} → ${s.ethAfter.toFixed(8)}\n  Δ: ${s.ethDelta.toFixed(8)} ETH (~$${(-s.ethDelta * 2400).toFixed(2)} cost)\n`;
+          // 5. Auto-recover remaining ETH back to MetaMask (minus 0.0001 gas dust)
+          const recoverable = Math.max(0, s.ethAfter - 0.0001);
+          if (recoverable > 0.0001) {
+            out.textContent += `\nReturning ${recoverable.toFixed(6)} ETH to MetaMask…\n`;
+            const w = await authedFetch('/api/arb/withdraw', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chain: 'base', asset: 'eth', amount: recoverable.toFixed(8), to: account }),
+            }).then((r) => r.json());
+            if (w.hash) out.textContent += `Recovery tx: ${w.hash}\n`;
+            else out.textContent += `Recovery failed: ${w.error || JSON.stringify(w)}\n`;
+          }
+        }
+      }
+    }
+    if (!done) { pill.textContent = 'timeout'; pill.style.color = 'var(--bad)'; }
+  } catch (e) {
+    pill.textContent = 'error';
+    pill.style.color = 'var(--bad)';
+    out.textContent += `\nError: ${e.message?.slice(0, 200) || e}\n`;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { pill.style.color = ''; refreshArb(); }, 5000);
+  }
+}
+
+const STEP_LABELS = {
+  wrap: 'Wrap ETH → WETH',
+  approve_weth: 'Approve router for WETH',
+  swap_weth_to_usdc: 'Swap WETH → USDC',
+  approve_usdc: 'Approve router for USDC',
+  swap_usdc_to_weth: 'Swap USDC → WETH',
+  unwrap: 'Unwrap WETH → ETH',
+};
+const BASESCAN = 'https://basescan.org';
+
+function renderPathTestSteps(status) {
+  const rows = (status.steps || []).map((s) => {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    const dot = s.status === 'success' ? 'good' : s.status === 'failed' ? 'bad' : '';
+    const label = STEP_LABELS[s.name] || s.name;
+    const txLink = s.txHash ? `<a href="${BASESCAN}/tx/${s.txHash}" target="_blank" style="font-family:ui-monospace,monospace;font-size:11px">${s.txHash.slice(0, 10)}…</a>` : (s.skipped ? '<span class="pill">skipped</span>' : '');
+    row.innerHTML = `<span><span class="dot ${dot}"></span> <strong>${escapeHtml(label)}</strong></span><span>${txLink} <span class="pill">${escapeHtml(s.status)}</span></span>`;
+    return row;
+  });
+  $('arb-pt-steps').replaceChildren(...rows);
+}
+
+// ─── arb console ───────────────────────────────────────────────
+let arbView = 'service';
+let arbTimer = null;
+let arbSelected = null;
+
+function showServiceWorkspace() {
+  arbView = 'service';
+  $('service-workspace').classList.remove('hidden');
+  $('arb-workspace').classList.add('hidden');
+  $('nav-arb').classList.remove('active');
+  if (arbTimer) { clearInterval(arbTimer); arbTimer = null; }
+}
+
+function showArbWorkspace() {
+  arbView = 'arb';
+  $('service-workspace').classList.add('hidden');
+  $('arb-workspace').classList.remove('hidden');
+  Array.from($('service-nav').querySelectorAll('button')).forEach((b) => b.classList.remove('active'));
+  $('nav-arb').classList.add('active');
+  refreshArb();
+  arbTimer = setInterval(refreshArb, 10000);
+}
+
+async function refreshArb() {
+  if (arbView !== 'arb') return;
+  const minSpread = $('arb-min-spread').value || '0';
+  const limit = $('arb-limit').value || '20';
+  const [statusRes, oppsRes, unwindRes, unwindStatusRes, runnerRes, walletRes, perfRes, tradesRes] = await Promise.all([
+    fetch('/api/arb/scanner-status').then((r) => r.json()).catch(() => null),
+    fetch(`/api/arb/opportunities?limit=${encodeURIComponent(limit)}&minSpread=${encodeURIComponent(minSpread)}`).then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/unwind-events?limit=10').then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/unwind-status').then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/runner-status').then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/runner-wallet').then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/runner-performance').then((r) => r.json()).catch(() => null),
+    fetch('/api/arb/trades?limit=20&includeSynthetic=1').then((r) => r.json()).catch(() => null),
+  ]);
+  renderArbMetrics(statusRes, oppsRes, unwindRes, unwindStatusRes, runnerRes);
+  renderArbOpps(oppsRes);
+  renderArbUnwind(unwindRes);
+  renderScannerToggle(statusRes);
+  await loadMetaMaskBalances();
+  renderEngineState(runnerRes);
+  renderWallet(walletRes);
+  renderPerformance(perfRes);
+  renderTrades(tradesRes);
+}
+
+const CATEGORY_COLOR = {
+  BOTH_OK:   'good',
+  BOTH_FAIL: '',
+  HALF_BUY:  'bad',
+  HALF_SELL: 'bad',
+  pending:   '',
+};
+
+function renderTrades(data) {
+  $('arb-trades-pill').textContent = data ? `${data.count}` : 'offline';
+  if (!data || !data.trades?.length) {
+    $('arb-trades-list').replaceChildren(rowMessage(data ? 'No trades yet.' : 'Runner unreachable.'));
+    return;
+  }
+  $('arb-trades-list').replaceChildren(...data.trades.map((t) => {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    row.style.flexWrap = 'wrap';
+    const cat = t.outcome?.category || 'pending';
+    const dot = CATEGORY_COLOR[cat] ?? '';
+    const route = `${t.buyChain}→${t.sellChain}`;
+    const synthetic = t.synthetic ? '<span class="pill" style="background:#f4e7c0">SYNTH</span> ' : '';
+    const tradeShort = (t.tradeId || '').slice(0, 8);
+    const sourceTs = t.sourceTimestamp ? new Date(t.sourceTimestamp).toLocaleTimeString() : '?';
+    row.innerHTML = `
+      <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="dot ${dot}"></span>
+        ${synthetic}
+        <strong>${escapeHtml(cat)}</strong>
+        <span class="pill">${escapeHtml(t.asset || '?')}</span>
+        <span class="pill">${escapeHtml(route)}</span>
+        <span class="pill" style="font-family:ui-monospace,monospace;font-size:11px">trade ${escapeHtml(tradeShort)}</span>
+        <span class="pill" style="font-family:ui-monospace,monospace;font-size:11px">opp ${escapeHtml(sourceTs)}</span>
+      </span>
+      <span class="pill">${escapeHtml(t.broadcastStatus || '?')}</span>`;
+    return row;
+  }));
+}
+
+function renderArbMetrics(status, opps, unwind, unwindStatus) {
+  const totalOpps = opps?.totalLines ?? 0;
+  const visibleOpps = opps?.count ?? 0;
+  const halfFills = unwind?.halfFillCount ?? 0;
+  const scannerState = status?.running ? 'running' : 'stopped';
+  const monitorState = unwindStatus?.running ? 'running' : 'stopped';
+  const metrics = [
+    ['Scanner', scannerState],
+    ['Monitor', monitorState],
+    ['Total opps', totalOpps],
+    ['Visible', visibleOpps],
+    ['Half-fills', halfFills],
+  ];
+  $('arb-metrics').replaceChildren(...metrics.map(([label, value]) => {
+    const el = document.createElement('div');
+    el.className = 'metric';
+    el.innerHTML = `<div class="metric-label">${label}</div><div class="metric-value">${escapeHtml(String(value))}</div>`;
+    return el;
+  }));
+}
+
+function renderArbOpps(opps) {
+  $('arb-opps-pill').textContent = opps ? `${opps.count}/${opps.totalLines}` : 'offline';
+  if (!opps || !opps.opps?.length) {
+    $('arb-opps-list').replaceChildren(rowMessage(opps ? 'No opportunities above threshold.' : 'Scanner unreachable.'));
+    return;
+  }
+  $('arb-opps-list').replaceChildren(...opps.opps.map((opp) => {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    row.style.cursor = 'pointer';
+    const spread = Number(opp.spreadPct).toFixed(4);
+    const route = `${opp.buyChain}→${opp.sellChain}`;
+    const ageSec = Math.round((Date.now() - new Date(opp.timestamp).getTime()) / 1000);
+    row.innerHTML = `
+      <span><strong>${escapeHtml(opp.asset)}</strong> <span class="pill">${escapeHtml(route)}</span></span>
+      <span class="pill">${spread}% · ${ageSec < 60 ? ageSec + 's' : Math.round(ageSec/60) + 'm'}</span>`;
+    row.addEventListener('click', () => selectArbOpp(opp));
+    return row;
+  }));
+}
+
+function renderArbUnwind(unwind) {
+  $('arb-unwind-pill').textContent = unwind ? `${unwind.halfFillCount} half-fills` : 'offline';
+  if (!unwind || !unwind.events?.length) {
+    $('arb-unwind-list').replaceChildren(rowMessage(unwind ? 'No events yet.' : 'Monitor unreachable.'));
+    return;
+  }
+  $('arb-unwind-list').replaceChildren(...unwind.events.map((e) => {
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    const isHalf = e.category === 'HALF_BUY' || e.category === 'HALF_SELL';
+    const dot = e.category === 'BOTH_OK' ? 'good' : isHalf ? 'bad' : '';
+    row.innerHTML = `
+      <span><span class="dot ${dot}"></span> <strong>${escapeHtml(e.category)}</strong> ${escapeHtml(e.asset || '')} ${escapeHtml(e.buyChain + '→' + e.sellChain)}</span>
+      <span class="pill">${escapeHtml(new Date(e.detectedAt).toLocaleTimeString())}</span>`;
+    return row;
+  }));
+}
+
+function renderScannerToggle(status) {
+  const btn = $('arb-scanner-toggle');
+  if (!status) { btn.textContent = 'Scanner offline'; btn.disabled = true; return; }
+  btn.disabled = false;
+  btn.textContent = status.running ? 'Stop scanner' : 'Start scanner';
+}
+
+async function toggleScanner() {
+  const status = await fetch('/api/arb/scanner-status').then((r) => r.json()).catch(() => null);
+  const action = status?.running ? 'scanner-stop' : 'scanner-start';
+  await authedFetch(`/api/arb/${action}`, { method: 'POST' }).catch(() => null);
+  setTimeout(refreshArb, 400);
+}
+
+function selectArbOpp(opp) {
+  arbSelected = opp;
+  $('arb-selected-pill').textContent = `${opp.asset} ${Number(opp.spreadPct).toFixed(4)}%`;
+  $('arb-output').textContent = JSON.stringify({
+    opportunity: opp,
+    proposedTrade: {
+      wallet: account ? short(account) : 'connect MetaMask first',
+      session: session ? 'verified' : 'not verified',
+      buyLeg:  { chain: opp.buyChain,  router: 'usdc->weth at fee 500', amountIn: '<TRADE_USDC env>' },
+      sellLeg: { chain: opp.sellChain, router: 'weth->usdc at fee 500', amountIn: '<quote.wethOut>' },
+      gating:  ['MetaMask connected', 'session verified', 'opp age < 5s', 'WETH balance check on sell chain'],
+    },
+  }, null, 2);
+}
+
+function rowMessage(msg) {
+  const row = document.createElement('div');
+  row.className = 'status-row';
+  row.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+  return row;
+}
+
+let operatorAddress = null;
+
+function renderEngineState(runner) {
+  const pill = $('arb-engine-pill');
+  const clearBtn = $('arb-clear-emergency');
+  const startBtn = $('arb-start-engine');
+  if (!runner) { pill.textContent = 'offline'; clearBtn.classList.add('hidden'); return; }
+  if (runner.emergencyClosed) {
+    pill.textContent = 'EMERGENCY CLOSED';
+    pill.style.color = 'var(--bad)';
+    clearBtn.classList.remove('hidden');
+    startBtn.disabled = true;
+    return;
+  }
+  pill.style.color = '';
+  pill.textContent = runner.running ? `running (pid ${runner.pid})` : 'stopped';
+  clearBtn.classList.add('hidden');
+  startBtn.disabled = false;
+}
+
+async function clearEmergency() {
+  if (!confirm('Clear the emergency state? Engine will be allowed to start again.')) return;
+  await authedFetch('/api/arb/clear-emergency', { method: 'POST' }).catch(() => null);
+  setTimeout(refreshArb, 400);
+}
+
+// ─── chain registry (mirrors backend TOKENS) ───────────────────
+const CHAIN_INFO = {
+  optimism: { id: 10,    hex: '0xa',    label: 'Optimism', usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', weth: '0x4200000000000000000000000000000000000006' },
+  base:     { id: 8453,  hex: '0x2105', label: 'Base',     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', weth: '0x4200000000000000000000000000000000000006' },
+  arbitrum: { id: 42161, hex: '0xa4b1', label: 'Arbitrum', usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' },
+};
+const CHAIN_ORDER = ['optimism', 'base', 'arbitrum'];
+
+let mmWallet = null;
+
+function renderWallet(operatorWallet) {
+  if (!operatorWallet || !operatorWallet.address) {
+    $('arb-wallet-pill').textContent = 'offline';
+    $('arb-wallet-addr').textContent = '--';
+    $('arb-inv-table').replaceChildren();
+    return;
+  }
+  operatorAddress = operatorWallet.address;
+  $('arb-wallet-pill').textContent = short(operatorWallet.address);
+  $('arb-wallet-addr').textContent = operatorWallet.address;
+  $('arb-mm-addr').textContent = account || 'connect to view';
+
+  const rows = CHAIN_ORDER.map((chain) => {
+    const op = operatorWallet.balances?.[chain];
+    const mm = mmWallet?.balances?.[chain];
+    const tr = document.createElement('tr');
+    tr.style.borderTop = '1px solid var(--line)';
+    tr.innerHTML = `
+      <td style="padding:8px 4px"><strong>${CHAIN_INFO[chain].label}</strong></td>
+      <td style="padding:8px 4px;color:${op?.ok ? '' : 'var(--bad)'}">${formatBal(op)}</td>
+      <td style="padding:8px 4px;color:${mm?.ok ? '' : 'var(--muted)'}">${mm ? formatBal(mm) : '<span class="pill">connect MetaMask</span>'}</td>
+      <td style="padding:8px 4px;text-align:right;white-space:nowrap">
+        <button data-withdraw="${chain}:usdc" style="height:26px;padding:0 8px">→ MM USDC</button>
+        <button data-withdraw="${chain}:weth" style="height:26px;padding:0 8px">→ MM WETH</button>
+        <button data-withdraw="${chain}:eth"  style="height:26px;padding:0 8px">→ MM ETH</button>
+      </td>`;
+    return tr;
+  });
+  $('arb-inv-table').replaceChildren(...rows);
+  $('arb-inv-table').querySelectorAll('button[data-withdraw]').forEach((btn) => {
+    btn.addEventListener('click', () => withdrawToMetaMask(btn.dataset.withdraw));
+  });
+}
+
+function formatBal(b) {
+  if (!b || !b.ok) return `<span class="pill">${escapeHtml(b?.error || '—')}</span>`;
+  return `<span class="pill">${b.usdc.toFixed(2)} USDC</span> <span class="pill">${b.weth.toFixed(4)} WETH</span> <span class="pill">${b.native.toFixed(4)} ETH</span>`;
+}
+
+async function loadMetaMaskBalances() {
+  if (!account) { mmWallet = null; return; }
+  try {
+    mmWallet = await fetch(`/api/arb/external-wallet?address=${account}`).then((r) => r.json());
+  } catch { mmWallet = null; }
+}
+
+function renderPerformance(perf) {
+  if (!perf) {
+    $('arb-perf-pill').textContent = 'offline';
+    $('arb-perf-grid').replaceChildren();
+    return;
+  }
+  $('arb-perf-pill').textContent = perf.lastAttemptAt ? `last ${new Date(perf.lastAttemptAt).toLocaleTimeString()}` : 'no attempts yet';
+  const fillRatePct = (perf.confirmed.fillRate * 100).toFixed(1) + '%';
+  const halfRatePct = (perf.confirmed.halfFillRate * 100).toFixed(1) + '%';
+  const metrics = [
+    ['Attempts', perf.attempts],
+    ['Broadcast OK', perf.broadcastSuccess],
+    ['Errors', perf.errors],
+    ['Both legs OK', perf.confirmed.bothOk],
+    ['Half-fills', perf.confirmed.halfBuy + perf.confirmed.halfSell],
+    ['Fill rate', fillRatePct],
+    ['Half-fill rate', halfRatePct],
+    ['Est. P&L', '$' + (perf.estProfitUsd || 0).toFixed(2)],
+  ];
+  $('arb-perf-grid').replaceChildren(...metrics.map(([label, value]) => {
+    const el = document.createElement('div');
+    el.className = 'metric';
+    el.innerHTML = `<div class="metric-label">${label}</div><div class="metric-value">${escapeHtml(String(value))}</div>`;
+    return el;
+  }));
+}
+
+async function startEngine() {
+  const tradeSizeUsd = Number($('arb-trade-size').value) || 500;
+  const slippageBps  = Number($('arb-slippage').value) || 50;
+  const r = await authedFetch('/api/arb/runner-start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tradeSizeUsd, slippageBps }),
+  }).then((r) => r.json()).catch((e) => ({ error: e.message }));
+  if (r.error) alert('Start failed: ' + r.error);
+  setTimeout(refreshArb, 400);
+}
+
+async function stopEngine() {
+  await authedFetch('/api/arb/runner-stop', { method: 'POST' }).catch(() => null);
+  setTimeout(refreshArb, 400);
+}
+
+async function emergencyClose() {
+  if (!confirm('EMERGENCY CLOSE — halt the arb engine immediately. Confirm?')) return;
+  await authedFetch('/api/arb/emergency-close', { method: 'POST' }).catch(() => null);
+  setTimeout(refreshArb, 400);
+}
+
+async function copyOperatorAddr() {
+  if (!operatorAddress) { alert('Operator address not loaded yet.'); return; }
+  await navigator.clipboard?.writeText(operatorAddress);
+}
+
+async function deployCapital() {
+  if (!window.ethereum) { alert('MetaMask not detected.'); return; }
+  if (!operatorAddress) { alert('Operator address not loaded yet.'); return; }
+  if (!account) { await connectWallet(); if (!account) return; }
+  openDeployModal();
+}
+
+function openDeployModal() {
+  const rows = CHAIN_ORDER.map((chain) => {
+    const info = CHAIN_INFO[chain];
+    return `
+      <div style="border:1px solid var(--line);border-radius:6px;padding:10px">
+        <strong>${info.label}</strong> <span class="pill">chainId ${info.id}</span>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+          <div><label>USDC amount</label><input type="number" step="0.01" min="0" data-deploy="${chain}:usdc" placeholder="0"></div>
+          <div><label>WETH amount</label><input type="number" step="0.0001" min="0" data-deploy="${chain}:weth" placeholder="0"></div>
+        </div>
+      </div>`;
+  }).join('');
+  $('deploy-rows').innerHTML = rows;
+  $('deploy-output').textContent = `Sending from MetaMask: ${account}\nTo operator: ${operatorAddress}`;
+  $('deploy-modal').classList.remove('hidden');
+}
+
+function closeDeployModal() { $('deploy-modal').classList.add('hidden'); }
+
+async function runDeployTransfers() {
+  if (!window.ethereum || !account) { alert('MetaMask not connected.'); return; }
+  const tasks = [];
+  document.querySelectorAll('input[data-deploy]').forEach((inp) => {
+    const v = parseFloat(inp.value);
+    if (Number.isFinite(v) && v > 0) {
+      const [chain, asset] = inp.dataset.deploy.split(':');
+      tasks.push({ chain, asset, amount: v });
+    }
+  });
+  if (!tasks.length) { $('deploy-output').textContent = 'No non-zero amounts entered.'; return; }
+
+  const out = [];
+  $('deploy-output').textContent = `Starting ${tasks.length} transfer(s)…\n`;
+  for (const t of tasks) {
+    const info = CHAIN_INFO[t.chain];
+    out.push(`\n[${info.label}] ${t.amount} ${t.asset.toUpperCase()} → ${short(operatorAddress)}`);
+    $('deploy-output').textContent = out.join('');
+    try {
+      // Switch network (will be a no-op if already on it)
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: info.hex }],
+      });
+      const tokenAddr = info[t.asset];
+      const decimals = t.asset === 'usdc' ? 6 : 18;
+      const amountHex = '0x' + bigIntFromHuman(t.amount, decimals).toString(16);
+      // ERC20 transfer(address,uint256) selector + padded args
+      const data = encodeErc20Transfer(operatorAddress, amountHex);
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: account, to: tokenAddr, data }],
+      });
+      out.push(` — tx ${txHash}`);
+    } catch (e) {
+      out.push(` — FAILED: ${e.message?.slice(0, 120) || e.code || 'unknown'}`);
+    }
+    $('deploy-output').textContent = out.join('');
+  }
+  out.push('\n\nDone. Refreshing balances in 5s…');
+  $('deploy-output').textContent = out.join('');
+  setTimeout(refreshArb, 5000);
+}
+
+function bigIntFromHuman(human, decimals) {
+  const factor = 10n ** BigInt(decimals);
+  const intPart = BigInt(Math.floor(human));
+  const frac = Math.round((human - Math.floor(human)) * Number(factor));
+  return intPart * factor + BigInt(frac);
+}
+
+function encodeErc20Transfer(to, amountHex) {
+  // selector for transfer(address,uint256) = 0xa9059cbb
+  const cleanTo = to.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+  const cleanAmount = amountHex.replace(/^0x/, '').padStart(64, '0');
+  return '0xa9059cbb' + cleanTo + cleanAmount;
+}
+
+async function withdrawToMetaMask(slug) {
+  if (!account) { alert('Connect MetaMask first so we know where to send.'); return; }
+  const [chain, asset] = slug.split(':');
+  const human = prompt(`Withdraw ${asset.toUpperCase()} from operator on ${CHAIN_INFO[chain].label} to your MetaMask wallet.\n\nAmount (${asset === 'usdc' ? 'USDC' : 'WETH'}):`);
+  if (!human) return;
+  const amount = Number(human);
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Invalid amount.'); return; }
+  const result = await authedFetch('/api/arb/withdraw', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chain, asset, amount, to: account }),
+  }).then((r) => r.json()).catch((e) => ({ error: e.message }));
+  if (result.error) { alert('Withdraw failed: ' + result.error); return; }
+  alert(`Withdraw broadcast.\n\ntx: ${result.hash}\n\nBalance refresh in ~10s.`);
+  setTimeout(refreshArb, 10000);
 }
 
 async function loadCatalog() {
@@ -213,6 +976,7 @@ function renderNav() {
     btn.innerHTML = `<span class="nav-id">${svc.id}</span><span class="nav-name">${escapeHtml(svc.name)}</span>`;
     btn.addEventListener('click', () => {
       selected = svc;
+      showServiceWorkspace();
       renderNav();
       renderSelected();
     });

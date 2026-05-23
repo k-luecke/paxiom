@@ -33,6 +33,17 @@ npm run service:ui
 open http://127.0.0.1:3000
 ```
 
+To run the local Phase 1 stack behind the console in one terminal:
+
+```bash
+scripts/run-phase1-stack.sh
+```
+
+This starts the catalog, product services, support services, and UI with
+localhost binds. Logs go to `log/phase1-stack/`. The UI health probes honor the
+same `*_HOST` / `*_PORT` environment variables as the service entrypoints, so
+non-default local ports are reflected in `/api/services/health`.
+
 ## x402 pricing
 
 Draft prices match the public schedule:
@@ -51,8 +62,14 @@ Successful protected calls return `PAYMENT-RESPONSE`,
 `X-PAYMENT-RESPONSE`, and `X-PAYMENT-RESPONSE-CORRELATION`.
 
 If `X402_FACILITATOR_URL` is set, verification is delegated to
-`<url>/verify`. Otherwise local header acceptance is used for development and
-testnet bring-up.
+`<url>/verify`. Otherwise local header acceptance is disabled unless
+`PAXIOM_ALLOW_LOCAL_X402=1` is explicitly set for local development. In
+`PAXIOM_DEPLOYMENT_MODE=testnet|staging|production`, missing facilitator
+configuration fails closed.
+
+When `REQUIRE_X402=0`, endpoints may still serve private testnet proofs, but
+the response payment metadata is intentionally `verified:false` and
+`settled:false`.
 
 ## Response envelope
 
@@ -66,6 +83,23 @@ Every product endpoint returns:
 
 If `PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM` is set, signatures use Ed25519.
 Without it, local development returns a deterministic `dev-sha256` signature.
+In `PAXIOM_DEPLOYMENT_MODE=testnet|staging|production`, Ed25519 response
+signing is mandatory and startup fails without both
+`PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM` and
+`PAXIOM_RESPONSE_SIGNING_KEY_ID`.
+
+## Deployment preflight
+
+Systemd services run `services/shared/preflight.mjs` before the service
+entrypoint. Strict deployment modes refuse:
+
+- mock flags such as `MOCK_DEVICE=1`, `MOCK_LOAD_NETWORK=1`, or
+  `PAXIOM_ALLOW_MOCK=1`
+- missing response-signing key material
+- x402 protected mode without a facilitator URL and non-zero settlement
+  address
+- A-203/A-204 reference services unless
+  `PAXIOM_ALLOW_REFERENCE_SERVICES=1` is intentionally set
 
 ## Compliance and operator tooling
 

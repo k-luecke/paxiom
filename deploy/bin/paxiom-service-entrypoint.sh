@@ -20,4 +20,5 @@ case "$service" in
     ;;
 esac
 
+/usr/bin/node services/shared/preflight.mjs "$service"
 exec /usr/bin/node "$entrypoint"

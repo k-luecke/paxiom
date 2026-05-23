@@ -1,19 +1,32 @@
-import { readFileSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs';
 import { createServer } from 'http';
+import { dirname } from 'path';
+import { randomUUID } from 'crypto';
 import { createWalletClient, createPublicClient, http, parseEther, encodeFunctionData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains';
 
-const LOG_FILE       = '/home/mk19/paxiom/opportunities.log';
-const EXEC_LOG       = '/home/mk19/paxiom/execution.log';
-const MIN_SPREAD     = 0.08;
+const PAXIOM_DIR     = process.env.PAXIOM_DIR || `${process.env.HOME}/paxiom`;
+const LOG_FILE       = process.env.LOG_FILE  || `${PAXIOM_DIR}/opportunities.log`;
+const EXEC_LOG       = process.env.EXEC_LOG  || `${PAXIOM_DIR}/execution.log`;
+// Persistent dedup state: opportunity id (timestamp + asset + route) of the last
+// scanner row consumed. Survives executor restarts so we never double-fire on
+// an opp that was already acted on.
+const STATE_DIR      = process.env.EXEC_STATE_DIR || `${PAXIOM_DIR}/.executor`;
+const STATE_FILE     = process.env.EXEC_STATE_FILE || `${STATE_DIR}/last-consumed.json`;
+const KILL_FILE      = process.env.KILL_FILE || '/tmp/paxiom-kill';
+// Spread threshold (in percent — 0.30 = 0.30% = 30 bps). Default 0.30%
+// clears 0.10% Uniswap V3 round-trip pool fees + gas at $1k size with margin.
+const MIN_SPREAD     = Number(process.env.PAXIOM_MIN_SPREAD || 0.30);
 const CHECK_INTERVAL = 15000;
 const COOLDOWN_MS    = 60000;
 const HTTP_PORT      = 7070;
 
 // ─── chain config ────────────────────────────────────────────
-// Set MAINNET = true when wallet is funded and ready for live trading
-const MAINNET = false;
+// MAINNET=true|1 in env switches to mainnet RPCs and token addresses.
+// arb-runner spawns this with MAINNET=true; default is testnet for safety.
+const MAINNET = process.env.MAINNET === 'true' || process.env.MAINNET === '1';
+console.log(`[CONFIG] network=${MAINNET ? 'MAINNET' : 'testnet'}`);
 
 const CHAIN_CONFIG = MAINNET ? {
   // Mainnet addresses
@@ -62,9 +75,13 @@ const RPCS = MAINNET ? {
   base:     'https://sepolia.base.org',
 };
 
-// Trade size — start small for first live mainnet trades
-const TRADE_USDC = 10_000000n; // $10 USDC (6 decimals)
-const SLIPPAGE   = 50n;        // 0.5% minimum output
+// Trade size — start small for first live mainnet trades.
+// Set PAXIOM_TRADE_SIZE_USDC in whole dollars (default $1,000 for Tier A live test).
+const TRADE_DOLLARS = Number(process.env.PAXIOM_TRADE_SIZE_USDC || 1000);
+const TRADE_USDC = BigInt(TRADE_DOLLARS) * 1_000000n;
+const SLIPPAGE_BPS = BigInt(Number(process.env.PAXIOM_SLIPPAGE_BPS || 50)); // 50 bps = 0.5%
+const SLIPPAGE_DENOM = 10000n;
+console.log(`[CONFIG] trade=$${TRADE_DOLLARS.toLocaleString()} slippage=${SLIPPAGE_BPS}bps`);
 
 // Quoter ABI — simulates swap without executing
 const QUOTER_ABI = [{
@@ -153,23 +170,68 @@ function publicForChain(chainName) {
   if (chainName === 'arbitrum') return publicArb;
   throw new Error(`Unknown chain for public client: ${chainName}`);
 }
+
+function explorerTxUrl(chainName, hash) {
+  const base = MAINNET
+    ? { optimism: 'https://optimistic.etherscan.io', base: 'https://basescan.org', arbitrum: 'https://arbiscan.io' }
+    : { optimism: 'https://sepolia-optimism.etherscan.io', base: 'https://sepolia.basescan.org', arbitrum: 'https://sepolia.arbiscan.io' };
+  return `${base[chainName]}/tx/${hash}`;
+}
 // ─────────────────────────────────────────────────────────────
 
-let lastSignalId = '';
+let lastConsumedOppId = '';
 let lastExecTime = 0;
 let execCount    = 0;
 let isExecuting  = false;
 
+// Deterministic id for an opportunity row from the scanner. Same logical opp
+// produces the same id regardless of who reads it — used for dedup + linkage.
+function opportunityId(opp) {
+  return `${opp.timestamp}|${opp.asset}|${opp.buyChain}->${opp.sellChain}|${opp.spreadPct}`;
+}
+
+// Load persistent dedup state — what was the last opp id we consumed?
 try {
-  const _lines = readFileSync(LOG_FILE, 'utf8').trim().split('\n');
-  lastSignalId = JSON.parse(_lines[_lines.length - 1]).timestamp;
-  console.log(`Dedup initialized to: ${lastSignalId}`);
-} catch(e) {}
+  if (existsSync(STATE_FILE)) {
+    const s = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    lastConsumedOppId = s.lastConsumedOppId || '';
+    console.log(`[DEDUP] resumed: lastConsumedOppId=${lastConsumedOppId || '(none)'}`);
+  } else if (existsSync(LOG_FILE)) {
+    // First run after this dedup format was added — initialize to the most recent
+    // opp so we don't replay history.
+    const _lines = readFileSync(LOG_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    if (_lines.length) {
+      const latest = JSON.parse(_lines[_lines.length - 1]);
+      lastConsumedOppId = opportunityId(latest);
+      console.log(`[DEDUP] initialized to most-recent log row: ${lastConsumedOppId}`);
+    }
+  }
+} catch (e) { console.error(`[DEDUP] state load failed: ${e.message}`); }
+
+function persistConsumed(oppId) {
+  try {
+    if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(STATE_FILE, JSON.stringify({
+      lastConsumedOppId: oppId, updatedAt: new Date().toISOString(),
+    }));
+  } catch (e) { console.error(`[DEDUP] persist failed: ${e.message}`); }
+}
 
 function logExecution(entry) {
-  appendFileSync(EXEC_LOG, JSON.stringify({ ...entry, timestamp: new Date().toISOString() }) + '\n');
+  // Coherent trade record — a single line with both legs, the source opp id,
+  // and the source scanner timestamp. Downstream readers (unwind monitor, UI,
+  // performance analytics) link buy/sell back to one trade by tradeId.
+  const record = {
+    timestamp: new Date().toISOString(),
+    tradeId: entry.tradeId || randomUUID(),
+    opportunityId: entry.opportunityId,
+    sourceTimestamp: entry.sourceTimestamp,
+    ...entry,
+  };
+  appendFileSync(EXEC_LOG, JSON.stringify(record) + '\n');
   console.log(`\n${'='.repeat(62)}`);
-  console.log(`[${entry.source ?? 'POLL'} #${execCount}] ${entry.asset} ${entry.spreadPct}%`);
+  console.log(`[${entry.source ?? 'POLL'} #${execCount}] trade=${record.tradeId.slice(0, 8)} opp=${(record.opportunityId || '').slice(0, 60)}`);
+  console.log(`Asset:  ${entry.asset} ${entry.spreadPct}%`);
   console.log(`Route:  ${entry.buyChain} -> ${entry.sellChain}`);
   console.log(`ChainA: ${entry.chainATxHash}`);
   console.log(`ChainB: ${entry.chainBTxHash}`);
@@ -221,12 +283,26 @@ async function quoteRealSpread(buyChainName, sellChainName, tradeUsdc) {
 
 
 async function executeLive(opp, source = 'POLL') {
+  const tradeId = randomUUID();
+  const oppId = opportunityId(opp);
+  if (existsSync(KILL_FILE)) {
+    console.log(`[KILL] ${KILL_FILE} present — refusing to execute`);
+    return false;
+  }
   if (isExecuting) return false;
   const now = Date.now();
   if (lastExecTime > 0 && now - lastExecTime < COOLDOWN_MS) {
     const remaining = Math.round((COOLDOWN_MS - (now - lastExecTime)) / 1000);
     console.log(`[COOLDOWN] ${remaining}s remaining`);
     return false;
+  }
+  // Stale-quote guard — reject opportunities older than 5s
+  if (opp.timestamp) {
+    const ageMs = now - new Date(opp.timestamp).getTime();
+    if (ageMs > 5000) {
+      console.log(`[SKIP] opportunity stale (${ageMs}ms > 5000ms)`);
+      return false;
+    }
   }
   isExecuting = true;
   execCount++;
@@ -243,37 +319,64 @@ async function executeLive(opp, source = 'POLL') {
       return false;
     }
 
+    // Cross-chain only — same-chain arb is the MEV-saturated lane and structurally
+    // not winnable for a non-co-located operator. Refuse same-chain opportunities
+    // regardless of how they got here (scanner, AO signal, manual POST).
+    if (buyChainName === sellChainName) {
+      console.log(`[REJECT] Same-chain opportunity refused (${buyChainName}). Cross-chain only — see project_paxiom_arb_design.`);
+      logExecution({ tradeId, opportunityId: oppId, sourceTimestamp: opp.timestamp,
+        source, asset: opp.asset, spreadPct: opp.spreadPct,
+        buyChain: opp.buyChain, sellChain: opp.sellChain,
+        chainATxHash: 'REFUSED: same-chain (MEV lane)',
+        chainBTxHash: 'not reached', timingGapMs: 0,
+        status: 'rejected_same_chain', estimatedProfit: 0 });
+      isExecuting = false;
+      return false;
+    }
+
     // ─── FIX: use helper for correct chain clients ────────────
     const buyWallet  = walletForChain(buyChainName);
     const sellWallet = walletForChain(sellChainName);
     const buyPublic  = publicForChain(buyChainName);
     // ─────────────────────────────────────────────────────────
 
-    // Check USDC balance on buy side
-    const usdcBal = await buyPublic.readContract({
-      address: buyCfg.usdc, abi: ERC20_ABI,
-      functionName: 'balanceOf', args: [account.address]
-    });
+    // Check USDC balance on buy side AND WETH balance on sell side in parallel.
+    // The sell leg is WETH→USDC on `sellChain`, so we need WETH pre-positioned there.
+    const sellPublic = publicForChain(sellChainName);
+    const [usdcBal, wethBal] = await Promise.all([
+      buyPublic.readContract({  address: buyCfg.usdc,  abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }),
+      sellPublic.readContract({ address: sellCfg.weth, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }),
+    ]);
 
     if (usdcBal < TRADE_USDC) {
       console.log('[SKIP] Insufficient USDC on ' + buyChainName + ': ' + usdcBal);
       isExecuting = false;
       return false;
     }
+    // WETH check uses a conservative bound: we need at least the wethOut from the
+    // upcoming quote. Pre-quote we don't know exact size, so require WETH equivalent
+    // to the trade-size USDC at $2k/ETH (deliberately low ETH price → larger WETH bound).
+    const minWeth = (TRADE_USDC * 10n ** 18n) / (2000n * 10n ** 6n);
+    if (wethBal < minWeth) {
+      console.log(`[SKIP] Insufficient WETH on ${sellChainName}: ${wethBal} (need ~${minWeth})`);
+      isExecuting = false;
+      return false;
+    }
 
-    // Build buy calldata — USDC → WETH on buy chain
-    const buyCalldata = encodeFunctionData({
-      abi: SWAP_ABI, functionName: 'exactInputSingle',
-      args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
-               fee: 500, recipient: account.address,
-               amountIn: TRADE_USDC, amountOutMinimum: 0n,
-               sqrtPriceLimitX96: 0n }]
-    });
+    // (buy calldata is built below, after the quote, so we can use a real
+    // amountOutMinimum derived from quote.wethOut)
 
-    // Approve USDC spend on buy side first
-    const approveCalldata = encodeFunctionData({
+    // Build BOTH approvals — buy router for USDC on buyChain AND sell router for
+    // WETH on sellChain. Without the sell-side approval the WETH→USDC swap reverts
+    // with "ERC20: insufficient allowance".
+    const MAX_UINT = (1n << 256n) - 1n;
+    const approveBuyCalldata = encodeFunctionData({
       abi: ERC20_ABI, functionName: 'approve',
-      args: [buyCfg.router, TRADE_USDC]
+      args: [buyCfg.router, MAX_UINT]
+    });
+    const approveSellCalldata = encodeFunctionData({
+      abi: ERC20_ABI, functionName: 'approve',
+      args: [sellCfg.router, MAX_UINT]
     });
 
     console.log('[SWAP] ' + buyChainName + ' buy USDC->ETH | ' + sellChainName + ' sell ETH->USDC');
@@ -300,12 +403,22 @@ async function executeLive(opp, source = 'POLL') {
 
     const t0 = Date.now();
 
-    // Step 1 — approve on buy side (must precede swap)
-    const approveNonce = await buyPublic.getTransactionCount({ address: account.address });
-    const approveHash = await buyWallet.sendTransaction({
-      to: buyCfg.usdc, data: approveCalldata, gas: 60000n, nonce: approveNonce
-    });
-    await buyPublic.waitForTransactionReceipt({ hash: approveHash, timeout: 30000 });
+    // Step 1 — approvals on BOTH chains in parallel (must precede swap).
+    // Idempotent: re-approving with MAX_UINT is a no-op after the first time, but
+    // we don't track approval state so we always send. Cost: ~$0.05 gas per chain.
+    // OPTIMIZATION: cache approved-set in memory to skip after first run.
+    const [buyApproveNonce, sellApproveNonce] = await Promise.all([
+      buyPublic.getTransactionCount({ address: account.address }),
+      sellPublic.getTransactionCount({ address: account.address }),
+    ]);
+    const [approveBuyHash, approveSellHash] = await Promise.all([
+      buyWallet.sendTransaction({  to: buyCfg.usdc,  data: approveBuyCalldata,  gas: 60000n, nonce: buyApproveNonce  }),
+      sellWallet.sendTransaction({ to: sellCfg.weth, data: approveSellCalldata, gas: 60000n, nonce: sellApproveNonce }),
+    ]);
+    await Promise.all([
+      buyPublic.waitForTransactionReceipt({  hash: approveBuyHash,  timeout: 30000 }),
+      sellPublic.waitForTransactionReceipt({ hash: approveSellHash, timeout: 30000 }),
+    ]);
 
     // Step 2 — fetch fresh nonces after approve
     const [freshNonceOp, freshNonceBase, freshNonceArb] = await Promise.all([
@@ -321,17 +434,28 @@ async function executeLive(opp, source = 'POLL') {
                     : sellChainName === 'base'      ? freshNonceBase
                     : freshNonceOp;
 
-    // ─── FIX: sell leg uses actual wethOut from the quote ─────
-    // We now know exactly how much WETH the buy will produce.
-    // Build sell calldata with real amountIn instead of 0n.
+    // ─── Build calldata for both legs using quote outputs ─────
+    // Both legs get real amountOutMinimum derived from the quote with SLIPPAGE_BPS
+    // tolerance. If MEV moves the price more than SLIPPAGE_BPS, the swap reverts
+    // and we burn gas instead of trading at a worse price.
+    const buyMinOut  = (quote.wethOut * (SLIPPAGE_DENOM - SLIPPAGE_BPS)) / SLIPPAGE_DENOM;
+    const sellMinOut = (BigInt(Math.floor(quote.usdcOut * 1e6)) * (SLIPPAGE_DENOM - SLIPPAGE_BPS)) / SLIPPAGE_DENOM;
+
+    const buyCalldata = encodeFunctionData({
+      abi: SWAP_ABI, functionName: 'exactInputSingle',
+      args: [{ tokenIn: buyCfg.usdc, tokenOut: buyCfg.weth,
+               fee: 500, recipient: account.address,
+               amountIn: TRADE_USDC, amountOutMinimum: buyMinOut,
+               sqrtPriceLimitX96: 0n }]
+    });
     const sellCalldata = encodeFunctionData({
       abi: SWAP_ABI, functionName: 'exactInputSingle',
       args: [{ tokenIn: sellCfg.weth, tokenOut: sellCfg.usdc,
                fee: 500, recipient: account.address,
-               amountIn: quote.wethOut,
-               amountOutMinimum: 0n,
+               amountIn: quote.wethOut, amountOutMinimum: sellMinOut,
                sqrtPriceLimitX96: 0n }]
     });
+    console.log(`[SLIP] buyMinOut=${buyMinOut} (WETH wei)  sellMinOut=${sellMinOut} (USDC base)`);
     // ─────────────────────────────────────────────────────────
 
     // Fire both swaps simultaneously
@@ -347,22 +471,25 @@ async function executeLive(opp, source = 'POLL') {
     ]);
     const timingGapMs = Date.now() - t0;
     lastExecTime = Date.now();
-    console.log(`OP:   https://sepolia-optimism.etherscan.io/tx/${chainAHash}`);
-    console.log(`Base: https://sepolia.basescan.org/tx/${chainBHash}`);
-    logExecution({ source, asset: opp.asset, spreadPct: opp.spreadPct,
+    console.log(`${buyChainName}:  ${explorerTxUrl(buyChainName, chainAHash)}`);
+    console.log(`${sellChainName}: ${explorerTxUrl(sellChainName, chainBHash)}`);
+    logExecution({ tradeId, opportunityId: oppId, sourceTimestamp: opp.timestamp,
+      source, asset: opp.asset, spreadPct: opp.spreadPct,
       buyChain: opp.buyChain, sellChain: opp.sellChain,
       chainATxHash: chainAHash, chainBTxHash: chainBHash,
       timingGapMs, status: 'broadcast_success',
       estimatedProfit: quote.netProfit });
+    // Wait for receipts on the actual buy/sell chains, not hardcoded ones.
     Promise.all([
-      publicOp.waitForTransactionReceipt({ hash: chainAHash, timeout: 30000 }),
-      publicBase.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })
-    ]).then(([a, b]) => console.log(`Confirmed OP block ${a.blockNumber} | Base block ${b.blockNumber}`))
+      buyPublic.waitForTransactionReceipt({  hash: chainAHash, timeout: 30000 }),
+      sellPublic.waitForTransactionReceipt({ hash: chainBHash, timeout: 30000 })
+    ]).then(([a, b]) => console.log(`Confirmed ${buyChainName} block ${a.blockNumber} | ${sellChainName} block ${b.blockNumber}`))
       .catch(() => console.log('Confirmation timeout'));
     return { chainAHash, chainBHash, timingGapMs };
   } catch(e) {
     console.error(`Error: ${e.message.slice(0, 120)}`);
-    logExecution({ source, asset: opp.asset, spreadPct: opp.spreadPct,
+    logExecution({ tradeId, opportunityId: oppId, sourceTimestamp: opp.timestamp,
+      source, asset: opp.asset, spreadPct: opp.spreadPct,
       buyChain: opp.buyChain, sellChain: opp.sellChain,
       chainATxHash: `ERROR: ${e.message.slice(0, 80)}`,
       chainBTxHash: 'not reached', timingGapMs: 0, status: 'error', estimatedProfit: 0 });
@@ -400,24 +527,35 @@ server.listen(HTTP_PORT, '127.0.0.1', () => {
 });
 
 async function poll() {
+  if (existsSync(KILL_FILE)) return;
   if (isExecuting) return;
   try {
     const content = readFileSync(LOG_FILE, 'utf8');
     const lines   = content.trim().split('\n').filter(l => l.trim());
     const recent  = lines.slice(-3).map(l => JSON.parse(l));
-    // Skip entire poll cycle if cooldown active
     const now = Date.now();
     if (lastExecTime > 0 && now - lastExecTime < COOLDOWN_MS) return;
 
     for (const opp of recent) {
-      if (opp.timestamp === lastSignalId) continue;
+      const oppId = opportunityId(opp);
+      // Strict consume-once: dedup against the last persisted oppId.
+      if (oppId === lastConsumedOppId) continue;
       if (parseFloat(opp.spreadPct) < MIN_SPREAD) continue;
       if (!opp.capturable) continue;
-      lastSignalId = opp.timestamp;
+      // Stale guard already in executeLive; this also skips opps older than 30s
+      // outright since they can't be re-quoted profitably.
+      const ageMs = now - new Date(opp.timestamp).getTime();
+      if (ageMs > 30_000) continue;
+      // Mark consumed BEFORE attempting — protects against a runaway loop on
+      // the same opp if executeLive itself errors mid-flight.
+      lastConsumedOppId = oppId;
+      persistConsumed(oppId);
       await executeLive(opp, 'POLL');
       break;
     }
-  } catch(e) {}
+  } catch(e) {
+    // Swallow the read error if the log doesn't exist yet (scanner not running).
+  }
 }
 
 console.log('Paxiom Live Executor — Testnet Broadcast');

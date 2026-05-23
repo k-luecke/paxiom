@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LoadNetworkClient } from '../client.mjs';
+import { LoadNetworkDataError } from '../errors.mjs';
 import { reconstructAccountState } from '../reconstruct.mjs';
 
 if (process.env.LOAD_NETWORK_LIVE !== '1') {
@@ -15,7 +16,21 @@ if (process.env.LOAD_NETWORK_LIVE !== '1') {
 
   test('reconstructs WETH account state at frozen historical block from real load.network', async () => {
     const client = new LoadNetworkClient();
-    const result = await reconstructAccountState({ blockNumber, address, client });
+    let result;
+    try {
+      result = await reconstructAccountState({ blockNumber, address, client });
+    } catch (e) {
+      if (e instanceof LoadNetworkDataError && e.status === 404) {
+        throw new Error(
+          `Load Network proof API returned 404 for block ${blockNumber}. ` +
+          'Set LOAD_NETWORK_URL to a provisioned archive-proof API exposing ' +
+          '/v1/blocks/:block, /v1/state/:block/account/:address, and ' +
+          '/v1/state/:block/storage/:address/:slot.',
+          { cause: e },
+        );
+      }
+      throw e;
+    }
     assert.equal(result.address.toLowerCase(), address);
     assert.match(result.state_root, /^0x[0-9a-f]{64}$/);
     assert.equal(result.source, 'load.network');

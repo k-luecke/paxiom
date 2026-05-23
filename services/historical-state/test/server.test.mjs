@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { createApp } from '../server.mjs';
 
 process.env.MOCK_LOAD_NETWORK = '1';
+process.env.PAXIOM_PROOF_ARCHIVE_MODE = 'disabled';
+delete process.env.PAXIOM_PROOF_ARCHIVE_REQUIRED;
 
 function listen(app) {
   return new Promise((resolveListen) => {
@@ -33,6 +35,8 @@ test('A-205 returns verified historical storage state', async () => {
     assert.equal(body.service, 'A-205');
     assert.equal(body.artifact.type, 'verified_historical_storage_state');
     assert.equal(body.artifact.payload.verified, true);
+    assert.equal(body.auditRecord.target, 'Paxiom Proof Archive');
+    assert.equal(body.auditRecord.status, 'archive_disabled');
     assert.match(body.platformSignature.signature, /^dev:/);
   } finally {
     server.close();

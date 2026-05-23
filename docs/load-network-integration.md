@@ -4,6 +4,28 @@ Closes Phase 0 / A-120 / S.03. After this runbook, the operator has end-to-end
 state reconstruction from Load Network archive working for at least one
 historical block, **with cryptographic proof verification at every step.**
 
+## Current S.03 direction
+
+Load/Ultraviolet remains useful reference work, but Paxiom is no longer
+waiting on a public proof API to close S.03. The working path is:
+
+1. Retrieve EIP-1186-shaped MPT witnesses from infrastructure Paxiom controls
+   (Erigon/Reth on real local or VM storage first).
+2. Verify the witness locally against a sync-committee-trusted Ethereum state
+   root.
+3. Package the verified proof material into an encrypted Paxiom proof archive
+   bundle.
+4. Store the bundle locally for rehearsal or on Arweave for durable testnet
+   evidence; optionally index the manifest through AO. Google Drive can hold
+   encrypted proof bundles after verification, but it is not an execution-node
+   datadir.
+
+The `load-network/` verifier remains valuable because it already proves the
+critical property: values are accepted because the MPT proof verifies, not
+because an RPC or archive service returned them.
+
+See `docs/paxiom-proof-archive.md` for the archive writer and env contract.
+
 ## What is Load Network
 
 [`load.network`](https://load.network) — Ethereum transaction data archived
@@ -20,6 +42,7 @@ lives on top of this client.
 ```
 load-network/
 ├── client.mjs             — HTTP client (rate-limit, backoff, structured logging)
+├── erigon-client.mjs      — Local Erigon JSON-RPC adapter for EIP-1186 proofs
 ├── verifier.mjs           — Pure MPT proof verifier (uses @ethereumjs/trie)
 ├── reconstruct.mjs        — client → verify → typed envelope; no fallback
 ├── errors.mjs             — Network / Data / Verification / Protocol taxonomy
@@ -29,6 +52,7 @@ load-network/
 └── test/
     ├── verifier.test.mjs    — 12 round-trip tests against synthesised tries
     ├── reconstruct.test.mjs — 7 fixture-driven end-to-end + failure-mode tests
+    ├── erigon-client.test.mjs — local Erigon RPC shape adapter tests
     └── live.test.mjs        — gated on LOAD_NETWORK_LIVE=1
 ```
 
@@ -68,7 +92,7 @@ transitive dep of the Ethereum tooling we use elsewhere.
 
 ```bash
 npm run test:load-network
-# 20 tests pass
+# 23 tests pass
 ```
 
 The fixture is synthesised by `fixtures/synthesise.mjs`: a small but
@@ -102,11 +126,45 @@ Pick a frozen historical block. Block 19 000 000 (~Jan 2024) is recommended:
 ## Step 3 — Operator live test
 
 ```bash
-LOAD_NETWORK_API_KEY=... LOAD_NETWORK_LIVE=1 npm run test:load-network
+LOAD_NETWORK_URL=https://<provisioned-load-proof-api> \
+LOAD_NETWORK_API_KEY=... \
+LOAD_NETWORK_LIVE=1 \
+npm run test:load-network
 # pass: reconstructs WETH at block 19 000 000 from real load.network
 ```
 
 Exiting 0 closes A-120 / S.03.
+
+The live client expects a provisioned archive-proof API with these paths:
+
+- `GET /v1/blocks/:block`
+- `GET /v1/state/:block/account/:address`
+- `GET /v1/state/:block/storage/:address/:slot`
+
+The public `https://load.network` site may return `404` for those paths; that
+means the proof API endpoint has not been pointed at the client yet. It is not
+a verifier failure. Set `LOAD_NETWORK_URL` to the operator-provisioned Load
+Network archive API before treating `LOAD_NETWORK_LIVE=1` as a gate.
+
+## Local Erigon proof source
+
+Services can bypass Load's HTTP shape and read EIP-1186 proofs from a local or
+VM-hosted Erigon/Reth endpoint:
+
+```bash
+export PAXIOM_STATE_SOURCE=erigon
+export PAXIOM_ERIGON_RPC_URL=http://127.0.0.1:8545
+```
+
+`ErigonProofClient` converts `eth_getBlockByNumber` and `eth_getProof` results
+into the same internal block/account/storage shape consumed by
+`reconstruct.mjs`. Paxiom still verifies the MPT proof before signing. A local
+JSON-RPC response is transport, not authority.
+
+Do not place the live Erigon MDBX datadir on Google Drive. That experiment was
+retired after proving too slow and fragile for node operation. If Drive is used
+at all, use it only as a cold store for encrypted, already-verified proof
+archive bundles.
 
 ## Used by
 

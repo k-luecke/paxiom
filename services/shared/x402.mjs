@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isStrictDeployment, deploymentMode } from './deployment.mjs';
 
 const DEFAULT_DESTINATION = '0x0000000000000000000000000000000000000000';
 const DEFAULT_NETWORK = 'base-sepolia';
@@ -59,7 +60,7 @@ export async function requirePayment(req, res, cfg) {
   if (process.env.REQUIRE_X402 !== '1') {
     return {
       ok: true,
-      payment: { mode: 'disabled', verified: true, settlementRequired: false },
+      payment: { mode: 'disabled', verified: false, settled: false, settlementRequired: false },
     };
   }
 
@@ -87,6 +88,24 @@ export async function requirePayment(req, res, cfg) {
     return { ok: true, payment };
   }
 
+  if (isStrictDeployment()) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'x402 facilitator unavailable',
+      detail: `X402_FACILITATOR_URL is required in ${deploymentMode()} mode`,
+    }));
+    return { ok: false };
+  }
+
+  if (process.env.PAXIOM_ALLOW_LOCAL_X402 !== '1') {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'x402 local verifier disabled',
+      detail: 'Set X402_FACILITATOR_URL for settlement verification or PAXIOM_ALLOW_LOCAL_X402=1 for local development.',
+    }));
+    return { ok: false };
+  }
+
   const payload = decodeHeader(signature);
   const requestHash = createHash('sha256')
     .update(signature)
@@ -97,7 +116,8 @@ export async function requirePayment(req, res, cfg) {
     ok: true,
     payment: {
       mode: 'local-header',
-      verified: true,
+      verified: false,
+      settled: false,
       settlementRequired: false,
       payload,
       receiptId: `local-x402-${requestHash.slice(0, 16)}`,
