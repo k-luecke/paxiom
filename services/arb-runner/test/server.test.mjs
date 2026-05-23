@@ -169,6 +169,22 @@ test('test-crosschain-loop injects BOTH_OK synthetic loop without transactions',
   } finally { ctx.cleanup(); }
 });
 
+test('cross-chain dust endpoint rejects same-chain route before spawning', async () => {
+  const ctx = await startRunner();
+  try {
+    const r = await postJson(ctx.url, '/v1/runner/test-crosschain-dust', {
+      buyChain: 'base',
+      sellChain: 'base',
+      sizeUsd: 1,
+    });
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /must differ/);
+    const status = await getJson(ctx.url, '/v1/runner/test-crosschain-dust-status');
+    assert.equal(status.status, 200);
+    assert.equal(status.body.active, false);
+  } finally { ctx.cleanup(); }
+});
+
 test('start endpoint refuses if emergency-closed', async () => {
   const ctx = await startRunner();
   try {

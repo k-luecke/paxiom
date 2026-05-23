@@ -279,13 +279,19 @@ pre{white-space:pre-wrap;word-break:break-word;background:#171713;color:#f4f1e8;
         <span class="pill" id="arb-pt-pill">idle</span>
       </div>
       <div class="panel-body">
-        <div class="notice">One-click validation: sends ETH from MetaMask to operator on Base, runs a USDC↔WETH round-trip, returns remaining ETH to MetaMask. Cost ≈ $0.40 in gas + pool fees on Base.</div>
+        <div class="notice">Run controlled path tests from the browser. The Base test validates venue mechanics; the cross-chain dust test validates the real two-chain operator flow after funding.</div>
         <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
           <div><label for="arb-pt-eth">ETH amount</label><input id="arb-pt-eth" type="number" step="0.001" min="0.001" max="0.05" value="0.005"></div>
           <div><label for="arb-pt-slip">Slippage (bps)</label><input id="arb-pt-slip" type="number" min="10" max="500" value="50"></div>
         </div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
+          <div><label for="arb-dust-buy">Dust buy chain</label><select id="arb-dust-buy"><option value="optimism">Optimism</option><option value="base">Base</option><option value="arbitrum">Arbitrum</option></select></div>
+          <div><label for="arb-dust-sell">Dust sell chain</label><select id="arb-dust-sell"><option value="base">Base</option><option value="optimism">Optimism</option><option value="arbitrum">Arbitrum</option></select></div>
+          <div><label for="arb-dust-size">Dust size (USDC)</label><input id="arb-dust-size" type="number" step="1" min="1" max="200" value="1"></div>
+        </div>
         <div class="actions" style="margin-top:12px">
-          <button id="arb-pt-run" class="primary">Run path test</button>
+          <button id="arb-pt-run" class="primary">Run Base path</button>
+          <button id="arb-dust-run" class="primary">Run cross-chain dust</button>
           <button id="arb-pt-loop" title="Inject a synthetic BOTH_OK cross-chain loop to verify execution log, unwind monitor, trade list, and performance wiring without using Uniswap">Test loop (no tx)</button>
           <button id="arb-pt-halfbuy"  title="Inject a synthetic HALF_BUY into execution.log to verify the unwind monitor classifies and surfaces it correctly">Test HALF_BUY (no tx)</button>
           <button id="arb-pt-halfsell" title="Inject a synthetic HALF_SELL into execution.log to verify the unwind monitor classifies and surfaces it correctly">Test HALF_SELL (no tx)</button>
@@ -389,6 +395,7 @@ async function init() {
   $('deploy-plan').addEventListener('click', loadBalancePlan);
   $('deploy-run').addEventListener('click', runDeployTransfers);
   $('arb-pt-run').addEventListener('click', runPathTest);
+  $('arb-dust-run').addEventListener('click', runCrossChainDustTest);
   $('arb-pt-loop').addEventListener('click', injectCrossChainLoop);
   $('arb-pt-halfbuy').addEventListener('click',  () => injectHalfFill('buy'));
   $('arb-pt-halfsell').addEventListener('click', () => injectHalfFill('sell'));
@@ -524,6 +531,49 @@ async function runPathTest() {
   } finally {
     btn.disabled = false;
     setTimeout(() => { pill.style.color = ''; refreshArb(); }, 5000);
+  }
+}
+
+async function runCrossChainDustTest() {
+  const btn = $('arb-dust-run');
+  const pill = $('arb-pt-pill');
+  const out = $('arb-pt-output');
+  const buyChain = $('arb-dust-buy').value;
+  const sellChain = $('arb-dust-sell').value;
+  const sizeUsd = Number($('arb-dust-size').value) || 1;
+  const slippageBps = Number($('arb-pt-slip').value) || 50;
+  if (buyChain === sellChain) { alert('Buy and sell chains must differ.'); return; }
+  if (!Number.isFinite(sizeUsd) || sizeUsd <= 0 || sizeUsd > 200) { alert('Dust size must be 1-200 USDC.'); return; }
+  if (!account) { await connectWallet(); if (!account) return; }
+  if (!confirm(`Run a real cross-chain dust test?\n\nRoute: ${CHAIN_INFO[buyChain].label} → ${CHAIN_INFO[sellChain].label}\nSize: $${sizeUsd}\n\nThis can broadcast approvals, wraps, and swaps from the operator wallet.`)) return;
+
+  btn.disabled = true;
+  pill.textContent = 'starting dust test';
+  out.style.display = 'block';
+  out.textContent = '';
+  try {
+    const started = await authedFetch('/api/arb/test-crosschain-dust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ buyChain, sellChain, sizeUsd, slippageBps }),
+    }).then((r) => r.json());
+    if (started.error) throw new Error(started.error);
+    out.textContent = `${started.command}\n\n`;
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const status = await fetch('/api/arb/test-crosschain-dust-status').then((r) => r.json()).catch(() => null);
+      if (!status) continue;
+      pill.textContent = status.active ? 'dust running' : `dust exit ${status.exitCode}`;
+      out.textContent = `${status.command || started.command}\n\n${status.output || ''}`;
+      if (!status.active) break;
+    }
+    setTimeout(refreshArb, 2500);
+  } catch (e) {
+    pill.textContent = 'dust error';
+    out.textContent += `\nError: ${e.message?.slice(0, 200) || e}\n`;
+  } finally {
+    btn.disabled = false;
   }
 }
 

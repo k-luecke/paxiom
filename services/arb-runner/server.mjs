@@ -39,6 +39,7 @@ const UNWIND_LOG = process.env.UNWIND_LOG || join(PAXIOM_DIR, 'unwind.log');
 const KILL_FILE  = process.env.KILL_FILE  || '/tmp/paxiom-kill';
 const here = dirname(fileURLToPath(import.meta.url));
 const EXECUTOR_SCRIPT = resolve(here, '../../sdk/live-executor.js');
+const TEST_TRADE_SCRIPT = resolve(here, '../../sdk/test-trade.js');
 
 // ─── operator wallet ──────────────────────────────────────────
 function loadOrCreateOperatorKey() {
@@ -257,6 +258,15 @@ const ERC20_FULL = [
 ];
 
 let roundTripState = { active: false, steps: [], startedAt: null, finishedAt: null, error: null, summary: null };
+let crossChainDustState = {
+  active: false,
+  startedAt: null,
+  finishedAt: null,
+  exitCode: null,
+  error: null,
+  command: null,
+  output: '',
+};
 
 function pushStep(name) {
   const s = { name, status: 'pending', startedAt: new Date().toISOString() };
@@ -421,6 +431,66 @@ async function runRoundTripBase({ ethAmount, slippageBps = 50 }) {
     roundTripState.active = false;
     roundTripState.finishedAt = new Date().toISOString();
   }
+}
+
+function startCrossChainDustTest({
+  buyChain = 'optimism',
+  sellChain = 'base',
+  sizeUsd = 1,
+  slippageBps = 50,
+} = {}) {
+  if (crossChainDustState.active) throw new Error('cross-chain dust test already in progress');
+  if (!TOKENS[buyChain]) throw new Error(`unknown buyChain ${buyChain}`);
+  if (!TOKENS[sellChain]) throw new Error(`unknown sellChain ${sellChain}`);
+  if (buyChain === sellChain) throw new Error('buyChain and sellChain must differ');
+  const size = Number(sizeUsd);
+  if (!Number.isFinite(size) || size <= 0 || size > 200) throw new Error('sizeUsd must be > 0 and <= 200');
+  const slip = Number(slippageBps);
+  if (!Number.isFinite(slip) || slip < 10 || slip > 500) throw new Error('slippageBps must be 10-500');
+
+  const args = [
+    TEST_TRADE_SCRIPT,
+    '--buy', buyChain,
+    '--sell', sellChain,
+    '--size', String(size),
+    '--slippage', String(slip),
+    '--force',
+    '--yes',
+  ];
+  crossChainDustState = {
+    active: true,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    exitCode: null,
+    error: null,
+    command: `node sdk/test-trade.js --buy ${buyChain} --sell ${sellChain} --size ${size} --slippage ${slip} --force --yes`,
+    output: '',
+  };
+
+  const child = spawn('node', args, {
+    cwd: PAXIOM_DIR,
+    env: { ...process.env, PAXIOM_DIR, OPERATOR_KEY_FILE: KEY_FILE },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const append = (chunk) => {
+    crossChainDustState.output += chunk.toString();
+    if (crossChainDustState.output.length > 20000) {
+      crossChainDustState.output = crossChainDustState.output.slice(-20000);
+    }
+  };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
+  child.on('error', (e) => {
+    crossChainDustState.error = e.message;
+    crossChainDustState.active = false;
+    crossChainDustState.finishedAt = new Date().toISOString();
+  });
+  child.on('exit', (code, signal) => {
+    crossChainDustState.exitCode = code ?? signal;
+    crossChainDustState.active = false;
+    crossChainDustState.finishedAt = new Date().toISOString();
+  });
+  return { started: true, command: crossChainDustState.command };
 }
 
 async function sendNativeEth(chain, to, amount) {
@@ -792,6 +862,24 @@ export function createApp() {
     }
     if (url.pathname === '/v1/runner/test-roundtrip-status') {
       return sendJson(res, 200, roundTripState);
+    }
+    if (url.pathname === '/v1/runner/test-crosschain-dust') {
+      if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);
+      let body = {};
+      try { body = await readJsonBody(req); } catch {}
+      try {
+        return sendJson(res, 202, startCrossChainDustTest({
+          buyChain: body.buyChain || 'optimism',
+          sellChain: body.sellChain || 'base',
+          sizeUsd: body.sizeUsd || 1,
+          slippageBps: body.slippageBps || 50,
+        }));
+      } catch (e) {
+        return sendJson(res, 409, { error: e.message });
+      }
+    }
+    if (url.pathname === '/v1/runner/test-crosschain-dust-status') {
+      return sendJson(res, 200, crossChainDustState);
     }
     if (url.pathname === '/v1/runner/test-half-fill') {
       // Inject a synthetic execution.log entry that simulates a half-filled

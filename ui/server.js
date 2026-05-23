@@ -115,6 +115,13 @@ export function createApp() {
       if (req.method === 'GET' && url.pathname === '/api/arb/test-roundtrip-status') {
         return proxyJson(res, runnerUrl('/v1/runner/test-roundtrip-status'));
       }
+      if (req.method === 'POST' && url.pathname === '/api/arb/test-crosschain-dust') {
+        if (!authOrReject(req, res)) return;
+        return proxyJson(res, runnerUrl('/v1/runner/test-crosschain-dust'), 'POST', req);
+      }
+      if (req.method === 'GET' && url.pathname === '/api/arb/test-crosschain-dust-status') {
+        return proxyJson(res, runnerUrl('/v1/runner/test-crosschain-dust-status'));
+      }
       if (req.method === 'POST' && url.pathname === '/api/arb/test-half-fill') {
         if (!authOrReject(req, res)) return;
         return proxyJson(res, runnerUrl('/v1/runner/test-half-fill'), 'POST', req);

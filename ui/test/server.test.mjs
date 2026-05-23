@@ -155,6 +155,7 @@ const PRIVILEGED_ROUTES = [
   ['POST', '/api/arb/clear-emergency'],
   ['POST', '/api/arb/withdraw'],
   ['POST', '/api/arb/test-roundtrip'],
+  ['POST', '/api/arb/test-crosschain-dust'],
   ['POST', '/api/arb/test-half-fill'],
   ['POST', '/api/arb/test-crosschain-loop'],
 ];
@@ -224,7 +225,7 @@ test('GET /api/arb routes do NOT require auth (read-only by design)', async () =
   try {
     // Read-only routes should reach the proxy (502 since upstream is down).
     // Critically they should NOT be 401.
-    const reads = ['/api/arb/scanner-status', '/api/arb/runner-status', '/api/arb/runner-wallet', '/api/arb/runner-performance', '/api/arb/balance-plan'];
+    const reads = ['/api/arb/scanner-status', '/api/arb/runner-status', '/api/arb/runner-wallet', '/api/arb/runner-performance', '/api/arb/balance-plan', '/api/arb/test-crosschain-dust-status'];
     for (const path of reads) {
       const r = await fetch(`${url}${path}`);
       assert.notEqual(r.status, 401, `${path} should not be 401 — it's read-only`);
