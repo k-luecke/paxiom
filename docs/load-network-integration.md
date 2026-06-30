@@ -24,6 +24,33 @@ The `load-network/` verifier remains valuable because it already proves the
 critical property: values are accepted because the MPT proof verifies, not
 because an RPC or archive service returned them.
 
+### Proven on real mainnet (2026-06)
+
+`load-network/reconstruct-real.mjs` (`npm run foundation:verify-state`) closes
+the loop against **real Ethereum mainnet**: it fetches the EIP-1186 proof for
+WETH at block 19,000,000 via a public archive RPC, walks the account + storage
+proofs locally, and accepts the value (`"Wrapped Ether"`) only because it
+verifies against state root `0x1ad7b80a…`. Because the trust anchor is the
+local MPT walk, the source is interchangeable — `eth.drpc.org` today, a
+self-hosted Erigon/Reth or Load Network tomorrow, with no change to the trust
+model.
+
+`scripts/run-a205-real.sh` boots the full A-205 service this way end-to-end:
+real `eth_getProof` source → local verify → encrypted local proof-archive
+bundle → Ed25519-signed envelope (persistent operator key).
+
+### A note on "Ultraviolet"
+
+`ultraviolet.load.network` is, as of this writing, a *live demo* of Load
+Network's experimental `~evm@1.0` (revm) HyperBEAM device. Its method set is
+undocumented and standard `eth_getProof` over Ethereum mainnet is unconfirmed;
+Load Network's native RPC methods (`eth_getArweaveStorageProof`,
+`eth_getWvmTransactionByTag`) are Arweave/WVM-oriented, not mainnet MPT state
+proofs. So Ultraviolet is not yet a turnkey proof source. That's fine: per the
+direction above, the proof *source* is transport and Load Network's durable
+role is the **archive** layer (`PAXIOM_PROOF_ARCHIVE_MODE=arweave`). Re-evaluate
+Ultraviolet / `~helios@1.0` as a source when they reach production.
+
 See `docs/paxiom-proof-archive.md` for the archive writer and env contract.
 
 ## What is Load Network

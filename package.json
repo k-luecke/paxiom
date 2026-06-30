@@ -11,6 +11,7 @@
     "test:ui": "node --test ui/test/server.test.mjs",
     "proof-archive:verify": "node scripts/proof-archive-verify.mjs",
     "erigon:proof-smoke": "node scripts/probe-erigon-proof-source.mjs",
+    "foundation:verify-state": "node load-network/reconstruct-real.mjs",
     "readiness:production": "bash scripts/production-readiness-check.sh",
     "hyperbeam:install": "./hyperbeam/bringup/install.sh",
     "hyperbeam:shell": "./hyperbeam/bringup/shell.sh",
