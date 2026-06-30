@@ -55,24 +55,34 @@ function fakeRes() {
 
 const CFG = { service: 'A-202', resource: '/v1/sync-committee/verify' };
 
-test('payment requirements round-trip as base64 JSON', () => {
+test('payment requirements are x402-spec-compliant for base-sepolia USDC', () => {
   const required = createPaymentRequired({
     service: 'ARB-001',
     resource: '/v1/arb/evaluate',
   });
-  const encoded = encodeHeader(required);
-  const decoded = decodeHeader(encoded);
+  const decoded = decodeHeader(encodeHeader(required));
   assert.equal(decoded.x402Version, 2);
+  assert.equal(decoded.scheme, 'exact');
   assert.equal(decoded.resource, '/v1/arb/evaluate');
-  assert.equal(decoded.asset, 'USDC');
+  // asset must be the USDC CONTRACT address, not a symbol.
+  assert.equal(decoded.asset, '0x036CbD53842c5426634e7929541eC2318f3dCF7e');
+  // EIP-712 domain the payer signs over.
+  assert.deepEqual(decoded.extra, { name: 'USDC', version: '2' });
 });
 
-test('public Phase 1 services use published draft prices', () => {
-  assert.equal(createPaymentRequired({ service: 'A-201' }).maxAmountRequired, '1.00');
-  assert.equal(createPaymentRequired({ service: 'A-202' }).maxAmountRequired, '0.50');
-  assert.equal(createPaymentRequired({ service: 'A-203' }).maxAmountRequired, '3.00');
-  assert.equal(createPaymentRequired({ service: 'A-204' }).maxAmountRequired, '0.05');
-  assert.equal(createPaymentRequired({ service: 'A-205' }).maxAmountRequired, '2.00');
+test('prices are carried as atomic USDC amounts (6dp)', () => {
+  assert.equal(createPaymentRequired({ service: 'A-201' }).maxAmountRequired, '1000000');
+  assert.equal(createPaymentRequired({ service: 'A-202' }).maxAmountRequired, '500000');
+  assert.equal(createPaymentRequired({ service: 'A-203' }).maxAmountRequired, '3000000');
+  assert.equal(createPaymentRequired({ service: 'A-204' }).maxAmountRequired, '50000');
+  assert.equal(createPaymentRequired({ service: 'A-205' }).maxAmountRequired, '2000000');
+});
+
+test('mainnet network selects mainnet USDC + domain name', () => {
+  const required = createPaymentRequired({ service: 'A-202', network: 'base' });
+  assert.equal(required.network, 'base');
+  assert.equal(required.asset, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+  assert.equal(required.extra.name, 'USD Coin');
 });
 
 test('paid request verifies AND settles on-chain before serving', async () => {
@@ -154,7 +164,7 @@ test('missing payment returns 402 with x402 requirements', async () => {
     assert.equal(out.ok, false);
     assert.equal(res.statusCode, 402);
     const required = decodeHeader(res.headers['PAYMENT-REQUIRED']);
-    assert.equal(required.maxAmountRequired, '0.50');
-    assert.equal(required.resource, '/v1/sync-committee/verify');
+    assert.equal(required.maxAmountRequired, '500000');
+    assert.match(required.resource, /\/v1\/sync-committee\/verify$/);
   });
 });

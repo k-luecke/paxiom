@@ -2,8 +2,27 @@ import { randomUUID } from 'node:crypto';
 
 const DEFAULT_DESTINATION = '0x0000000000000000000000000000000000000000';
 const DEFAULT_NETWORK = 'base-sepolia';
-const DEFAULT_ASSET = 'USDC';
 
+// Per-network USDC settlement config. `asset` is the token CONTRACT address
+// (x402 requires the address, not a symbol); `name`/`version` are the USDC
+// EIP-712 domain fields the facilitator needs to recover the payer signature.
+// Values mirror the x402 library's own chain config.
+const NETWORKS = {
+  'base-sepolia': {
+    asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+    name: 'USDC',
+    version: '2',
+    decimals: 6,
+  },
+  base: {
+    asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    name: 'USD Coin',
+    version: '2',
+    decimals: 6,
+  },
+};
+
+// Prices are published in whole USDC; x402 carries the ATOMIC amount.
 const PRICE_BY_SERVICE = {
   'A-201': '1.00',
   'A-202': '0.50',
@@ -15,6 +34,13 @@ const PRICE_BY_SERVICE = {
   'COMPLIANCE-001': '0.01',
 };
 
+// "0.50" -> "500000" (6dp). String math so we never touch float precision.
+export function toAtomicAmount(amount, decimals) {
+  const [whole, frac = ''] = String(amount).split('.');
+  const fracPadded = `${frac}${'0'.repeat(decimals)}`.slice(0, decimals);
+  return (BigInt(whole || '0') * 10n ** BigInt(decimals) + BigInt(fracPadded || '0')).toString();
+}
+
 export function paymentSignatureFrom(req) {
   return req.headers['payment-signature'] || req.headers['x-payment'] || '';
 }
@@ -23,21 +49,25 @@ export function createPaymentRequired({
   service,
   resource,
   amount = PRICE_BY_SERVICE[service] || '0.01',
-  asset = process.env.X402_ASSET || DEFAULT_ASSET,
   network = process.env.X402_NETWORK || DEFAULT_NETWORK,
   destination = process.env.X402_DESTINATION || DEFAULT_DESTINATION,
 } = {}) {
+  const net = NETWORKS[network] || NETWORKS[DEFAULT_NETWORK];
+  const asset = process.env.X402_ASSET || net.asset;
   return {
     x402Version: 2,
     scheme: 'exact',
     network,
     asset,
-    maxAmountRequired: amount,
+    maxAmountRequired: toAtomicAmount(amount, net.decimals),
     payTo: destination,
     resource,
     description: `Paxiom ${service} paid API access`,
     mimeType: 'application/json',
     outputSchema: { type: 'object' },
+    // EIP-712 domain for the USDC transferWithAuthorization the payer signs.
+    extra: { name: net.name, version: net.version },
+    maxTimeoutSeconds: 120,
     expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
   };
 }
@@ -67,6 +97,35 @@ function assertX402Configured() {
   x402GateChecked = true;
 }
 
+// Emit a spec-shaped HTTP 402. Standard x402 clients read the payment options
+// from the `accepts` array in the body; we also keep the PAYMENT-REQUIRED
+// header and a legacy `payment_required` field for existing callers.
+// x402 PaymentRequirements.resource must be an absolute URL. Services pass a
+// path; build the absolute form from the inbound request.
+function absoluteResource(req, resource) {
+  if (!resource || /^https?:\/\//.test(resource)) return resource;
+  const proto = req.headers['x-forwarded-proto'] || 'http';
+  const host = req.headers.host || 'localhost';
+  return `${proto}://${host}${resource}`;
+}
+
+function send402(res, cfg, error, reason) {
+  const required = createPaymentRequired(cfg);
+  const encoded = encodeHeader(required);
+  res.writeHead(402, {
+    'Content-Type': 'application/json',
+    'PAYMENT-REQUIRED': encoded,
+    'X-PAYMENT-REQUIRED': encoded,
+  });
+  res.end(JSON.stringify({
+    x402Version: 2,
+    error,
+    reason,
+    accepts: [required],
+    payment_required: required,
+  }));
+}
+
 export async function requirePayment(req, res, cfg) {
   if (process.env.REQUIRE_X402 !== '1') {
     return {
@@ -77,33 +136,31 @@ export async function requirePayment(req, res, cfg) {
 
   assertX402Configured();
 
+  // x402 requires `resource` to be an absolute URL; services pass a path, so
+  // resolve it against the request's host. The same resolved requirements are
+  // used for the 402 challenge and the facilitator verify/settle calls, so the
+  // payer signs over exactly what we settle.
+  const resolvedCfg = { ...cfg, resource: absoluteResource(req, cfg.resource) };
+
   const signature = paymentSignatureFrom(req);
   if (!signature) {
-    const required = createPaymentRequired(cfg);
-    const encoded = encodeHeader(required);
-    res.writeHead(402, {
-      'Content-Type': 'application/json',
-      'PAYMENT-REQUIRED': encoded,
-      'X-PAYMENT-REQUIRED': encoded,
-    });
-    res.end(JSON.stringify({ error: 'payment required', payment_required: required }));
+    send402(res, resolvedCfg, 'X-PAYMENT header is required');
     return { ok: false };
   }
 
-  const payment = await verifyWithFacilitator(signature, cfg);
+  const payment = await verifyWithFacilitator(signature, resolvedCfg);
   // Billable gate: the authorization must verify AND, unless settlement is
   // explicitly opted out, the on-chain capture must succeed. Otherwise we'd
   // hand over the product without ever collecting the funds.
   const settledOk =
     !payment.settlementRequired || payment.settled || process.env.X402_SETTLE === '0';
   if (!payment.verified || !settledOk) {
-    const required = createPaymentRequired(cfg);
-    res.writeHead(402, { 'PAYMENT-REQUIRED': encodeHeader(required) });
-    res.end(JSON.stringify({
-      error: payment.verified ? 'payment settlement failed' : 'payment verification failed',
-      reason: payment.reason,
-      payment_required: required,
-    }));
+    send402(
+      res,
+      resolvedCfg,
+      payment.verified ? 'payment settlement failed' : 'payment verification failed',
+      payment.reason,
+    );
     return { ok: false };
   }
   return { ok: true, payment };
@@ -162,7 +219,8 @@ async function verifyWithFacilitator(signature, cfg) {
   try {
     const resp = await facilitatorPost(`${base}/verify`, requestBody);
     if (!resp.ok) {
-      return { mode: 'facilitator', verified: false, settled: false, status: resp.status, reason: 'verify_http_error' };
+      const detail = await resp.text().catch(() => '');
+      return { mode: 'facilitator', verified: false, settled: false, status: resp.status, reason: `verify_http_${resp.status}: ${detail.slice(0, 200)}` };
     }
     verifyBody = await resp.json();
   } catch (e) {
