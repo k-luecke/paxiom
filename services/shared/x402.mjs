@@ -91,10 +91,19 @@ export async function requirePayment(req, res, cfg) {
   }
 
   const payment = await verifyWithFacilitator(signature, cfg);
-  if (!payment.verified) {
+  // Billable gate: the authorization must verify AND, unless settlement is
+  // explicitly opted out, the on-chain capture must succeed. Otherwise we'd
+  // hand over the product without ever collecting the funds.
+  const settledOk =
+    !payment.settlementRequired || payment.settled || process.env.X402_SETTLE === '0';
+  if (!payment.verified || !settledOk) {
     const required = createPaymentRequired(cfg);
     res.writeHead(402, { 'PAYMENT-REQUIRED': encodeHeader(required) });
-    res.end(JSON.stringify({ error: 'payment verification failed', payment_required: required }));
+    res.end(JSON.stringify({
+      error: payment.verified ? 'payment settlement failed' : 'payment verification failed',
+      reason: payment.reason,
+      payment_required: required,
+    }));
     return { ok: false };
   }
   return { ok: true, payment };
@@ -107,6 +116,8 @@ export function paymentResponseHeaders(payment, extra = {}) {
     verified: payment?.verified !== false,
     mode: payment?.mode || 'unknown',
     settled: payment?.settled === true,
+    transaction: payment?.transaction,
+    network: payment?.network,
     correlation: extra.correlation,
   };
   const encoded = encodeHeader(receipt);
@@ -117,25 +128,86 @@ export function paymentResponseHeaders(payment, extra = {}) {
   };
 }
 
+function facilitatorAuthHeaders() {
+  // Public testnet facilitators (e.g. x402.org) need no auth; the Coinbase
+  // CDP mainnet facilitator requires a bearer token.
+  const key = process.env.X402_FACILITATOR_API_KEY;
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+async function facilitatorPost(url, payload) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...facilitatorAuthHeaders() },
+    body: JSON.stringify(payload),
+  });
+}
+
+// Runs the two-step x402 facilitator flow: /verify validates the signed
+// payment authorization, then /settle submits the on-chain transfer that
+// actually captures the funds. Verifying without settling means the customer
+// proved they *could* pay but no money moved — so settlement is what makes
+// the endpoint billable.
 async function verifyWithFacilitator(signature, cfg) {
   const base = process.env.X402_FACILITATOR_URL.replace(/\/+$/, '');
-  const resp = await fetch(`${base}/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      paymentPayload: signature,
-      paymentRequirements: createPaymentRequired(cfg),
-    }),
-  });
-  if (!resp.ok) {
-    return { mode: 'facilitator', verified: false, status: resp.status };
+  const requirements = createPaymentRequired(cfg);
+  // The X-PAYMENT header is base64(JSON) per x402; facilitators expect the
+  // decoded PaymentPayload object. Fall back to the raw value if it isn't
+  // base64 JSON (keeps simpler/test payloads working).
+  const paymentPayload = decodeHeader(signature) ?? signature;
+  const requestBody = { x402Version: 2, paymentPayload, paymentRequirements: requirements };
+
+  // Step 1 — verify the authorization.
+  let verifyBody;
+  try {
+    const resp = await facilitatorPost(`${base}/verify`, requestBody);
+    if (!resp.ok) {
+      return { mode: 'facilitator', verified: false, settled: false, status: resp.status, reason: 'verify_http_error' };
+    }
+    verifyBody = await resp.json();
+  } catch (e) {
+    return { mode: 'facilitator', verified: false, settled: false, reason: `verify_error: ${e.message}` };
   }
-  const body = await resp.json();
+  const valid = verifyBody.isValid === true || verifyBody.verified === true;
+  if (!valid) {
+    return {
+      mode: 'facilitator', verified: false, settled: false,
+      reason: verifyBody.invalidReason || 'authorization_invalid', facilitator: { verify: verifyBody },
+    };
+  }
+
+  // Verify-only opt-out (smoke tests / dry runs): authorization is valid but
+  // we deliberately don't move money.
+  if (process.env.X402_SETTLE === '0') {
+    return {
+      mode: 'facilitator', verified: true, settled: false, settlementRequired: true,
+      payer: verifyBody.payer, facilitator: { verify: verifyBody },
+    };
+  }
+
+  // Step 2 — settle on-chain to capture the funds.
+  let settleBody;
+  try {
+    const resp = await facilitatorPost(`${base}/settle`, requestBody);
+    if (!resp.ok) {
+      return { mode: 'facilitator', verified: true, settled: false, settlementRequired: true, status: resp.status, reason: 'settle_http_error', payer: verifyBody.payer };
+    }
+    settleBody = await resp.json();
+  } catch (e) {
+    return { mode: 'facilitator', verified: true, settled: false, settlementRequired: true, reason: `settle_error: ${e.message}`, payer: verifyBody.payer };
+  }
+  const settled = settleBody.success === true;
+  const txHash = settleBody.transaction || settleBody.txHash || settleBody.transactionHash;
   return {
     mode: 'facilitator',
-    verified: body.verified === true || body.isValid === true,
+    verified: true,
+    settled,
     settlementRequired: true,
-    facilitator: body,
-    receiptId: body.receiptId || body.transactionHash,
+    transaction: txHash,
+    network: settleBody.network || requirements.network,
+    payer: settleBody.payer || verifyBody.payer,
+    receiptId: txHash || verifyBody.receiptId,
+    reason: settled ? undefined : (settleBody.errorReason || 'settlement_unsuccessful'),
+    facilitator: { verify: verifyBody, settle: settleBody },
   };
 }
