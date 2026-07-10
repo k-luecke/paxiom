@@ -17,21 +17,11 @@ jobs:
           node-version: '20'
 
       - name: Install paxiom dependencies
-        run: npm ci || npm install
+        run: npm ci
 
-      - name: Verify wasm checksum integrity
-        run: |
-          cd hyperbeam/devices/bls-sync-committee
-          if [[ -f bls_verifier.wasm ]]; then
-            expected=$(awk '{print $1}' bls_verifier.wasm.sha256)
-            actual=$(sha256sum bls_verifier.wasm | awk '{print $1}')
-            if [[ "$expected" != "$actual" ]]; then
-              echo "::error::wasm checksum drift — refresh per UPDATE.md"
-              exit 1
-            fi
-          else
-            echo "wasm not vendored yet — refresh after first bls-verifier release"
-          fi
+      # wasm checksum verify: removed until bls_verifier.wasm is actually
+      # vendored. Re-add this step alongside the real .wasm + .sha256 once
+      # bls-verifier ships its first release. Tracked by audit/L-20.
 
       - name: Sync committee service tests (mock dispatch)
         run: npm run test:sync-committee

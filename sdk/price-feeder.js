@@ -4,6 +4,10 @@ const PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
 const PAXIOM_DIR = process.env.PAXIOM_DIR || `${process.env.HOME}/paxiom`;
 const LOG_FILE   = process.env.LOG_FILE  || `${PAXIOM_DIR}/opportunities.log`;
 
+// `decimals` here is a derived scaling factor (NOT the ERC20 token's
+// decimals): it equals abs(token0.decimals - token1.decimals) where
+// token1 is the asset side. See top-level price-feeder.js for the
+// canonical comment.
 const POOLS = [
   { chain: 'arbitrum', dex: 'uniswap', asset: 'ETH', rpc: 'https://arb1.arbitrum.io/rpc', pool: '0xC6962004f452bE9203591991D15f6b388e09E8D0', decimals: 12 },
   { chain: 'base', dex: 'uniswap', asset: 'ETH', rpc: 'https://mainnet.base.org', pool: '0xd0b53D9277642d899DF5C87A3966A349A798F224', decimals: 12 },
@@ -226,7 +230,22 @@ async function fetchPoolPrice(entry) {
     });
     const json = await res.json();
     if (!json.result || json.result === '0x') return null;
-    const sqrtPriceX96 = BigInt('0x' + json.result.slice(2, 66));
+    // Audit M-08: slot0 returns
+    //   (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex,
+    //    uint16 observationCardinality, uint16 observationCardinalityNext,
+    //    uint8 feeProtocol, bool unlocked)
+    // ABI-encoded — each value padded to a 32-byte word. sqrtPriceX96 is
+    // 20 bytes, padded with 12 leading zeros in the first word. Validate
+    // those padding bytes ARE zero before decoding; if Uniswap V4 (or any
+    // future ABI) packs something else into the high 12 bytes, fail loud
+    // rather than silently mis-quote the pool.
+    if (json.result.length < 2 + 64) return null;
+    const firstWord = json.result.slice(2, 66);
+    if (BigInt('0x' + firstWord.slice(0, 24)) !== 0n) {
+      console.log(`[PRICE-FEEDER] slot0 ABI-changed for ${entry.chain}/${entry.asset}: first-word padding non-zero`);
+      return null;
+    }
+    const sqrtPriceX96 = BigInt('0x' + firstWord.slice(24));
     const Q96 = BigInt(2) ** BigInt(96);
     const price = Number(sqrtPriceX96 * sqrtPriceX96 * BigInt(10 ** entry.decimals)) / Number(Q96 * Q96);
     if (price < 0.0001 || price > 10000000) return null;

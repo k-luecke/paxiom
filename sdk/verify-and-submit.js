@@ -8,10 +8,14 @@ const PAXIOM_PROCESS_ID = process.env.PAXIOM_PROCESS_ID
   || 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
 const BEACON_URL = process.env.BEACON_URL
   || 'https://lodestar-mainnet.chainsafe.io';
-const VERIFIER_BIN = process.env.VERIFIER_BIN
-  || '/home/mk19/paxiom/rust/bls-verify-cli/target/release/bls-verify-cli';
-const PUBKEY_CACHE = process.env.PUBKEY_CACHE
-  || '/home/mk19/paxiom/pubkey-cache.json';
+const VERIFIER_BIN = process.env.VERIFIER_BIN;
+if (!VERIFIER_BIN) {
+  throw new Error('VERIFIER_BIN env var is required (path to bls-verify-cli binary)');
+}
+const PUBKEY_CACHE = process.env.PUBKEY_CACHE;
+if (!PUBKEY_CACHE) {
+  throw new Error('PUBKEY_CACHE env var is required (path to pubkey cache JSON file)');
+}
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 async function fetchJSON(url) {

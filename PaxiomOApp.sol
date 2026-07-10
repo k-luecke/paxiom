@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.19;
 
 import { OApp, Origin, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/OApp.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -33,10 +33,31 @@ contract PaxiomOApp is OApp {
         uint256 spreadBps
     );
 
+    /// @notice Owner-settable LayerZero options blob (audit M-16). Was
+    ///         hardcoded at two sites; centralised here so destination
+    ///         gas can be raised without a redeploy.
+    bytes public lzOptions;
+    event LzOptionsUpdated(bytes opts);
+
     constructor(
         address _endpoint,
         address _owner
-    ) OApp(_endpoint, _owner) Ownable(_owner) {}
+    ) OApp(_endpoint, _owner) Ownable(_owner) {
+        // Audit L-07: bootstrap LayerZero options use OptionsType v1
+        // (`uint16(1) | uint256(gas)`). v1 is accepted by every live LZ v2
+        // endpoint; this is a startup default only. Operators migrating to
+        // the v3 byte format build the blob off-chain with the v2
+        // OptionsBuilder (e.g. `OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value)`)
+        // and rotate via `setLzOptions(bytes)` (owner-only, audit M-16).
+        // No protocol feature is gated on v3.
+        lzOptions = abi.encodePacked(uint16(1), uint256(200000));
+    }
+
+    function setLzOptions(bytes calldata _opts) external onlyOwner {
+        require(_opts.length > 0, "Empty options");
+        lzOptions = _opts;
+        emit LzOptionsUpdated(_opts);
+    }
 
     // Send opportunity data to another chain
     function sendOpportunity(
@@ -59,7 +80,7 @@ contract PaxiomOApp is OApp {
         _lzSend(
             _dstEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)), // options
+            lzOptions, // options
             MessagingFee(msg.value, 0),
             payable(msg.sender)
         );
@@ -96,7 +117,11 @@ contract PaxiomOApp is OApp {
         emit OpportunityReceived(asset, price, spreadBps, buyChain, sellChain, timestamp);
     }
 
-    // Quote the fee for sending a message
+    /// @notice Quote the LayerZero fee for `sendOpportunity`.
+    /// @dev Caller-spammable (audit M-02): `_quote` hits the configured
+    ///      LayerZero endpoint, which can incur RPC cost. Operators
+    ///      MUST rate-limit this read at the gateway; this contract
+    ///      does not.
     function quoteSend(
         uint32 _dstEid,
         string memory _asset,
@@ -117,7 +142,7 @@ contract PaxiomOApp is OApp {
         MessagingFee memory fee = _quote(
             _dstEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             false
         );
 

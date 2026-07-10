@@ -42,7 +42,11 @@ async function hyperbeamDispatch(req, url) {
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
-    throw new Error(`hyperbeam dispatch returned ${resp.status}: ${await resp.text()}`);
+    // Truncate upstream error body to 256 chars to avoid leaking internal
+    // HyperBEAM detail through to API consumers / logs.
+    const body = await resp.text();
+    const snippet = body.length > 256 ? body.slice(0, 256) + '…' : body;
+    throw new Error(`hyperbeam dispatch returned ${resp.status}: ${snippet}`);
   }
   return normalizeHyperbeamResponse(await resp.json());
 }
@@ -86,8 +90,17 @@ function harnessDispatch(req, harnessBin) {
 }
 
 // Synthesises a VerifyResponse without hitting any beacon or running blst.
-// Verification status is keyed off the request hash; tests can assert shape
-// and round-trip without standing up the full Rust harness.
+// Fail closed: no real BLS verification ran, so verified=false and mock=true
+// are returned. Downstream consumers that key off payload.verified will see
+// the truth; consumers that key off payload.mock can branch explicitly.
+//
+// Audit M-10: the mock signing_root is sha256 over (slot, block_root,
+// parent_root, bits, signature). Two requests with byte-identical
+// (bits, signature) at the same slot would collide — extremely rare in
+// practice but possible in tests. The real verifier would not collide
+// because it derives the signing_root from the fork domain. Documented
+// rather than addressed: changing the mock shape would mask real-mode
+// regressions in tests that snapshot the digest.
 function mockDispatch(req) {
   const hash = createHash('sha256');
   hash.update(JSON.stringify({
@@ -98,15 +111,16 @@ function mockDispatch(req) {
   const digest = hash.digest('hex');
 
   return Promise.resolve({
-    verified: true,
+    verified: false,
+    mock: true,
     service: 'A-202',
     slot: req.slot,
     fork_version: '0x06000000',
     domain: '0x' + 'a'.repeat(64),
     signing_root: '0x' + digest,
-    participating: 432,
-    committee_size: 512,
-    primitive_return_code: 1,
+    participating: 0,
+    committee_size: 0,
+    primitive_return_code: -1,
     platform_signature: '0x' + digest,
     ao_message_id: `mock-ao-${req.slot}-${digest.slice(0, 12)}`,
   });

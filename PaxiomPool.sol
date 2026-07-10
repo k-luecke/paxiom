@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.19;
 
 import { OApp, Origin, MessagingFee } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/OApp.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
@@ -11,15 +12,32 @@ interface IERC20 {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
-contract PaxiomPool is OApp {
+/// @dev TOKEN ASSUMPTION (audit H-13): `USDC` MUST be a standard ERC20 with
+///      no transfer hooks (no ERC777 `tokensReceived`, no ERC1363
+///      `onTransferReceived`) and no fee-on-transfer. The constructor does
+///      not validate this; deployers MUST verify the token address against
+///      Circle's canonical USDC for the target chain. Non-conforming tokens
+///      re-open the `_settleLoan` reentrancy surface despite this contract's
+///      `nonReentrant` modifiers and CEI ordering.
+/// @dev Inheritance: ReentrancyGuard is appended after OApp so OApp's
+///      storage layout is preserved (ReentrancyGuard adds a single
+///      `uint256 _status` slot at the end).
+contract PaxiomPool is OApp, ReentrancyGuard {
 
     // ─── constants ───────────────────────────────────────────────
-    uint256 public constant COLLATERAL_BPS   = 1000;  // 10% collateral
-    uint256 public constant PROTOCOL_FEE_BPS = 9;     // 0.09% total fee
-    uint256 public constant PROTOCOL_SHARE   = 30;    // 30% of fee to protocol
-    uint256 public constant LP_SHARE         = 70;    // 70% of fee to LPs
-    uint256 public constant TIMEOUT          = 5 minutes;
-    uint256 public constant BPS_DENOM        = 10000;
+    uint256 public constant COLLATERAL_BPS         = 1000;  // 10% collateral
+    uint256 public constant PROTOCOL_FEE_BPS       = 9;     // 0.09% total fee
+    uint256 public constant PROTOCOL_SHARE         = 30;    // 30% of fee to protocol
+    uint256 public constant LP_SHARE               = 70;    // 70% of fee to LPs
+    uint256 public constant LIQUIDATOR_BOUNTY_BPS  = 500;   // 5% of slashed collateral
+    uint256 public constant TIMEOUT                = 5 minutes;
+    // audit H-09: borrower-exclusive window after expiry. liquidateExpired
+    // reverts unconditionally during (expiry, expiry + BORROWER_GRACE], so
+    // a repay/liquidate race at the expiry boundary cannot be miner-reordered
+    // against the borrower. 60s clears observed L2 reorg windows
+    // (Optimism ~30s, Base ~30s, Arbitrum ~16s) with ~2x headroom.
+    uint256 public constant BORROWER_GRACE         = 60;
+    uint256 public constant BPS_DENOM              = 10000;
 
     uint8 constant MSG_LOAN_REQUEST = 1;
     uint8 constant MSG_EXEC_CONFIRM = 2;
@@ -28,10 +46,22 @@ contract PaxiomPool is OApp {
     address public immutable USDC;
     address public protocolTreasury;
     uint32  public peerEid;
+    bytes32 public trustedPeer;
+    // Audit M-16: LayerZero options blob (uint16 type | uint256 gas) was
+    // hardcoded with type=1 / gas=200000. Now owner-set via setLzOptions
+    // so operators can raise the destination gas if the receive handler
+    // grows. Initialised in the constructor.
+    bytes public lzOptions;
 
     uint256 public totalLiquidity;
     uint256 public totalFees;
     uint256 public loanCounter;
+
+    // 24h chosen vs. 5-minute loan TIMEOUT: any in-flight loan settles
+    // to the old treasury before a swap can take effect.
+    uint256 public constant TREASURY_TIMELOCK = 24 hours;
+    address public pendingTreasury;
+    uint256 public pendingTreasuryEta;
 
     mapping(address => uint256) public lpShares;
     uint256 public totalShares;
@@ -54,7 +84,14 @@ contract PaxiomPool is OApp {
     event LoanIssued(uint256 indexed loanId, address indexed borrower, uint256 amount);
     event LoanRepaid(uint256 indexed loanId, uint256 fee);
     event LoanDefaulted(uint256 indexed loanId, uint256 collateralSlashed);
+    event LiquidatorPaid(address indexed liquidator, uint256 indexed loanId, uint256 bounty);
     event ExecutionConfirmed(uint256 indexed loanId);
+    event TrustedPeerUpdated(uint32 indexed eid, bytes32 indexed peer);
+    event TreasuryProposed(address indexed treasury, uint256 eta);
+    event TreasuryUpdated(address indexed previous, address indexed current);
+    event TreasuryProposalCancelled(address indexed treasury);
+    event PeerEidUpdated(uint32 indexed previous, uint32 indexed current);
+    event LzOptionsUpdated(bytes opts);
 
     // ─── constructor ─────────────────────────────────────────────
     constructor(
@@ -66,17 +103,50 @@ contract PaxiomPool is OApp {
         USDC             = _usdc;
         protocolTreasury = _owner;
         peerEid          = _peerEid;
+        // Audit M-16: default LayerZero options (type 1, 200_000 gas) at
+        // construction; operators can raise via setLzOptions.
+        // Audit L-07: this default uses LayerZero OptionsType v1 encoding
+        // (`uint16(1) | uint256(gas)`). v1 still works on every live LZ v2
+        // endpoint and is sufficient as a bootstrap; for v3 byte-format
+        // migrations operators encode options off-chain via the v2
+        // OptionsBuilder (e.g. `OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, value)`)
+        // and set them through `setLzOptions(bytes)` below. No protocol
+        // feature is gated on v3 — the v1 default is purely a startup value.
+        lzOptions        = abi.encodePacked(uint16(1), uint256(200000));
+    }
+
+    /// @notice Update the LayerZero options blob used by `_lzSend` and
+    ///         `_quote` paths (audit M-16). Operators MUST verify the
+    ///         destination handler's gas requirement before lowering.
+    function setLzOptions(bytes calldata _opts) external onlyOwner {
+        require(_opts.length > 0, "Empty options");
+        lzOptions = _opts;
+        emit LzOptionsUpdated(_opts);
     }
 
     // ─── liquidity provider functions ────────────────────────────
 
-    function deposit(uint256 amount) external {
+    /// @notice Deposit USDC and receive LP shares.
+    /// @dev SHARE ACCOUNTING (audit H-08): `totalLiquidity` is explicitly
+    ///      state-tracked and only mutates via {deposit}, {withdraw},
+    ///      {liquidateExpired} (collateral remainder) and `_settleLoan`
+    ///      (lpCut). It is NEVER derived from `balanceOf`, so the
+    ///      classical ERC4626 first-depositor donation attack does not
+    ///      apply: a direct USDC transfer to this contract does NOT
+    ///      inflate share price.
+    /// @dev RESIDUAL ROUNDING: at extreme ratios from fee accruals (long-
+    ///      lived pool, large LP_SHARE accumulation, tiny new deposit)
+    ///      `(amount * totalShares) / totalLiquidity` could truncate to
+    ///      zero. The `shares > 0` revert below makes that case loud and
+    ///      refundable instead of a silent gift to existing LPs.
+    function deposit(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
         require(IERC20(USDC).transferFrom(msg.sender, address(this), amount), "Transfer failed");
 
         uint256 shares = totalShares == 0
             ? amount
             : (amount * totalShares) / totalLiquidity;
+        require(shares > 0, "Zero shares");
 
         lpShares[msg.sender] += shares;
         totalShares          += shares;
@@ -85,7 +155,7 @@ contract PaxiomPool is OApp {
         emit Deposited(msg.sender, amount, shares);
     }
 
-    function withdraw(uint256 shares) external {
+    function withdraw(uint256 shares) external nonReentrant {
         require(shares > 0 && lpShares[msg.sender] >= shares, "Insufficient shares");
 
         uint256 amount = (shares * totalLiquidity) / totalShares;
@@ -101,7 +171,16 @@ contract PaxiomPool is OApp {
 
     // ─── borrower functions ───────────────────────────────────────
 
-    function requestLoan(uint256 loanAmount) external payable {
+    /// @notice Borrow USDC across chains via LayerZero.
+    /// @dev `msg.value` MUST cover the LayerZero native fee. Use
+    ///      {quoteLzFee} immediately before calling to size it; excess is
+    ///      refunded to msg.sender by `_lzSend`. State is consistent on
+    ///      revert: USDC transfer happens before `_lzSend`, but a revert
+    ///      in `_lzSend` rolls back the entire transaction.
+    /// @dev RACE NOTE (audit H-07): an owner call to {setPeerEid} between
+    ///      {quoteLzFee} and {requestLoan} re-routes the message to a
+    ///      different peer. See {setPeerEid} for the operator runbook.
+    function requestLoan(uint256 loanAmount) external payable nonReentrant {
         require(loanAmount > 0, "Zero amount");
         require(IERC20(USDC).balanceOf(address(this)) >= loanAmount, "Insufficient liquidity");
 
@@ -132,7 +211,7 @@ contract PaxiomPool is OApp {
         _lzSend(
             peerEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             MessagingFee({ nativeFee: msg.value, lzTokenFee: 0 }),
             payable(msg.sender)
         );
@@ -140,11 +219,19 @@ contract PaxiomPool is OApp {
         emit LoanIssued(loanId, msg.sender, loanAmount);
     }
 
-    function repayLoan(uint256 loanId) external {
+    /// @notice Repay an active loan and reclaim collateral.
+    /// @dev BORROWER GRACE (audit H-09): repay is allowed up to
+    ///      `expiry + BORROWER_GRACE`. During that window
+    ///      {liquidateExpired} reverts (gated by `block.timestamp >
+    ///      loan.expiry + BORROWER_GRACE`), and `repayLoan` is gated on
+    ///      `loan.borrower == msg.sender`, so the window is exclusively
+    ///      the borrower's. This eliminates the miner-orderable race at
+    ///      the original `expiry` boundary.
+    function repayLoan(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
         require(loan.borrower == msg.sender, "Not borrower");
-        require(block.timestamp <= loan.expiry, "Loan expired");
+        require(block.timestamp <= loan.expiry + BORROWER_GRACE, "Grace expired");
 
         uint256 totalOwed = loan.amount + loan.fee;
         require(IERC20(USDC).transferFrom(msg.sender, address(this), totalOwed), "Repay failed");
@@ -152,45 +239,67 @@ contract PaxiomPool is OApp {
         _settleLoan(loanId);
     }
 
-    function liquidateExpired(uint256 loanId) external {
+    /// @notice Liquidate a loan whose borrower failed to repay within
+    ///         `TIMEOUT + BORROWER_GRACE`.
+    /// @dev Gated past `expiry + BORROWER_GRACE` to give the borrower an
+    ///      exclusive repay window (audit H-09).
+    function liquidateExpired(uint256 loanId) external nonReentrant {
         Loan storage loan = loans[loanId];
         require(loan.active && !loan.repaid, "Loan not active");
-        require(block.timestamp > loan.expiry, "Not expired");
+        require(block.timestamp > loan.expiry + BORROWER_GRACE, "In grace");
 
-        loan.active     = false;
-        totalLiquidity += loan.collateral;
+        loan.active = false;
 
+        uint256 bounty = (loan.collateral * LIQUIDATOR_BOUNTY_BPS) / BPS_DENOM;
+        uint256 toPool = loan.collateral - bounty;
+
+        totalLiquidity += toPool;
+        require(IERC20(USDC).transfer(msg.sender, bounty), "Bounty transfer failed");
+
+        emit LiquidatorPaid(msg.sender, loanId, bounty);
         emit LoanDefaulted(loanId, loan.collateral);
     }
 
     // ─── internal settlement ─────────────────────────────────────
 
+    /// @dev Strict checks-effects-interactions (audit H-13): all state
+    ///      mutations complete BEFORE any external transfer, so a hooked
+    ///      recipient cannot observe partially-mutated state mid-call.
     function _settleLoan(uint256 loanId) internal {
         Loan storage loan = loans[loanId];
-        loan.active = false;
-        loan.repaid = true;
 
-        uint256 protocolCut = (loan.fee * PROTOCOL_SHARE) / 100;
-        uint256 lpCut       = loan.fee - protocolCut;
+        // ── Effects: snapshot then mutate all state ────────────────
+        uint256 fee         = loan.fee;
+        uint256 protocolCut = (fee * PROTOCOL_SHARE) / 100;
+        uint256 lpCut       = fee - protocolCut;
+        uint256 collateral  = loan.collateral;
+        address borrower    = loan.borrower;
+        uint256 loanAmount  = loan.amount;
 
+        loan.active     = false;
+        loan.repaid     = true;
+        totalLiquidity += loanAmount + lpCut;
+        totalFees      += fee;
+
+        // ── Interactions: external calls last ──────────────────────
         require(IERC20(USDC).transfer(protocolTreasury, protocolCut), "Treasury transfer failed");
-        totalLiquidity += loan.amount + lpCut;
-        totalFees      += loan.fee;
+        require(IERC20(USDC).transfer(borrower, collateral), "Collateral return failed");
 
-        require(IERC20(USDC).transfer(loan.borrower, loan.collateral), "Collateral return failed");
-
-        emit LoanRepaid(loanId, loan.fee);
+        emit LoanRepaid(loanId, fee);
     }
 
     // ─── LayerZero receive ────────────────────────────────────────
 
     function _lzReceive(
-        Origin calldata,
+        Origin calldata _origin,
         bytes32,
         bytes calldata _message,
         address,
         bytes calldata
     ) internal override {
+        require(_origin.srcEid == peerEid, "Untrusted srcEid");
+        require(trustedPeer != bytes32(0) && _origin.sender == trustedPeer, "Untrusted peer");
+
         (uint8 msgType, uint256 loanId) = abi.decode(_message, (uint8, uint256));
 
         if (msgType == MSG_EXEC_CONFIRM) {
@@ -212,12 +321,17 @@ contract PaxiomPool is OApp {
         totalRequired      = collateralRequired + protocolFee;
     }
 
+    /// @notice Quote the LayerZero native fee for a `requestLoan` of
+    ///         `loanAmount`. Caller-spammable (audit M-02): `_quote`
+    ///         hits the configured LayerZero endpoint, which can incur
+    ///         RPC cost. Operators MUST rate-limit this read at the
+    ///         gateway / service layer; this contract does not.
     function quoteLzFee(uint256 loanAmount) external view returns (uint256 nativeFee) {
         bytes memory payload = abi.encode(MSG_LOAN_REQUEST, uint256(0), address(0), loanAmount);
         MessagingFee memory fee = _quote(
             peerEid,
             payload,
-            abi.encodePacked(uint16(1), uint256(200000)),
+            lzOptions,
             false
         );
         return fee.nativeFee;
@@ -230,11 +344,57 @@ contract PaxiomPool is OApp {
 
     // ─── admin ────────────────────────────────────────────────────
 
-    function setTreasury(address _treasury) external onlyOwner {
-        protocolTreasury = _treasury;
+    function proposeTreasury(address _treasury) external onlyOwner {
+        require(_treasury != address(0), "Zero treasury");
+        require(pendingTreasuryEta == 0, "Proposal pending");
+        pendingTreasury    = _treasury;
+        pendingTreasuryEta = block.timestamp + TREASURY_TIMELOCK;
+        emit TreasuryProposed(_treasury, pendingTreasuryEta);
     }
 
+    function executeTreasury() external onlyOwner {
+        require(pendingTreasuryEta != 0, "No proposal");
+        require(block.timestamp >= pendingTreasuryEta, "Timelock active");
+        address previous = protocolTreasury;
+        address next     = pendingTreasury;
+        protocolTreasury = next;
+        pendingTreasury    = address(0);
+        pendingTreasuryEta = 0;
+        emit TreasuryUpdated(previous, next);
+    }
+
+    function cancelTreasury() external onlyOwner {
+        require(pendingTreasuryEta != 0, "No proposal");
+        address cancelled = pendingTreasury;
+        pendingTreasury    = address(0);
+        pendingTreasuryEta = 0;
+        emit TreasuryProposalCancelled(cancelled);
+    }
+
+    /// @notice Repoint the LayerZero peer endpoint id used by
+    ///         {requestLoan} and `_lzSend` paths.
+    /// @dev Liveness-only on funds: a wrong peer eid is gated downstream
+    ///      by `trustedPeer` (see `_lzReceive` srcEid check) so messaging
+    ///      bricks rather than redirects. However, a peer change racing
+    ///      an in-flight {requestLoan} burns the caller's `msg.value`
+    ///      quote and reverts the request, which is user-hostile.
+    /// @dev OPERATOR RUNBOOK for peer migrations:
+    ///        1. Stop accepting new {requestLoan} calls upstream
+    ///           (services / UI) BEFORE the on-chain change.
+    ///        2. Wait `TIMEOUT` (5 minutes) so any inflight loans
+    ///           settle, repay, or expire.
+    ///        3. Call {setPeerEid} with the new endpoint id.
+    ///        4. Call {setTrustedPeer} with the new peer address.
+    ///        5. Resume accepting {requestLoan} calls upstream.
+    ///      A future PR will gate this rotation through the operator
+    ///      UI's drain-then-update workflow (sibling of #90/#92/#96/#98).
     function setPeerEid(uint32 _eid) external onlyOwner {
+        emit PeerEidUpdated(peerEid, _eid);
         peerEid = _eid;
+    }
+
+    function setTrustedPeer(bytes32 _peer) external onlyOwner {
+        trustedPeer = _peer;
+        emit TrustedPeerUpdated(peerEid, _peer);
     }
 }

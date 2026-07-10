@@ -89,13 +89,20 @@ function sameSlot(a, b) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.env.MOCK_DEVICE === '1' && process.env.PAXIOM_ALLOW_MOCK !== '1') {
+    console.error('FATAL: MOCK_DEVICE=1 requires PAXIOM_ALLOW_MOCK=1.');
+    console.error('Mock dispatch returns verified=false and stamps payload.mock=true,');
+    console.error('but production deployments must NOT run with MOCK_DEVICE=1.');
+    console.error('Set PAXIOM_ALLOW_MOCK=1 in dev/CI to acknowledge.');
+    process.exit(1);
+  }
   const server = createApp();
   server.listen(PORT, HOST, () => {
     console.log(`sync-committee service listening on http://${HOST}:${PORT}`);
     console.log('  POST /v1/sync-committee/verify');
     console.log('  GET  /healthz');
     if (process.env.MOCK_DEVICE === '1') {
-      console.log('  MOCK_DEVICE=1 - responses are synthesised, not verified');
+      console.log('  MOCK_DEVICE=1 - responses are synthesised; payload.verified=false, payload.mock=true');
     }
   });
 }

@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setupResponseSigningKey } from '../../shared/test/sign-test-helper.mjs';
 import { createApp } from '../server.mjs';
+
+setupResponseSigningKey();
 
 process.env.MOCK_LOAD_NETWORK = '1';
 process.env.PAXIOM_PROOF_ARCHIVE_MODE = 'disabled';

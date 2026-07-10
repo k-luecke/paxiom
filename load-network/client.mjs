@@ -166,12 +166,10 @@ function sleep(ms) {
 }
 
 function randomRequestId() {
-  // 12 hex chars — good enough for log correlation, no crypto strength needed
+  // 12 hex chars for log correlation. Requires Node 18+ (built-in
+  // globalThis.crypto.getRandomValues); package.json declares
+  // engines.node >=18.0.0. Math.random fallback dropped per audit L-16.
   const buf = new Uint8Array(6);
-  if (globalThis.crypto?.getRandomValues) {
-    globalThis.crypto.getRandomValues(buf);
-  } else {
-    for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
-  }
+  globalThis.crypto.getRandomValues(buf);
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
 }

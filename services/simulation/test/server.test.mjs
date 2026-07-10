@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { setupResponseSigningKey } from '../../shared/test/sign-test-helper.mjs';
 import { createApp } from '../server.mjs';
+
+setupResponseSigningKey();
 
 function listen(app) {
   return new Promise((resolve) => {
@@ -25,7 +28,7 @@ test('A-204 returns a deterministic simulation receipt', async () => {
     assert.equal(resp.status, 200);
     const body = await resp.json();
     assert.equal(body.service, 'A-204');
-    assert.equal(body.artifact.type, 'simulation_receipt');
+    assert.equal(body.artifact.type, 'simulation_request_receipt');
     assert.equal(body.artifact.payload.success, true);
     assert.equal(body.artifact.payload.gas_used, 21032);
   } finally {

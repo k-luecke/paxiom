@@ -26,7 +26,9 @@ export function normalizeOpportunity(input) {
   if (!Number.isFinite(tradeSizeUsd) || tradeSizeUsd <= 0) throw new Error('tradeSizeUsd must be positive');
 
   return {
-    id: input.id || `${timestamp}:${asset}:${buyChain}:${sellChain}:${spreadPct}`,
+    id: input.id || (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${timestamp}:${encodeURIComponent(asset)}:${encodeURIComponent(buyChain)}:${encodeURIComponent(sellChain)}:${spreadPct}`),
     asset,
     buyChain,
     sellChain,
@@ -54,10 +56,25 @@ export function evaluateOpportunity(input, opts = {}) {
   if (netProfitUsd <= 0) reasons.push('non_positive_net_profit');
   if (opp.velocity === 'CLOSING') reasons.push('spread_closing');
 
+  // Kill-switch resolution: env is the ceiling; opts can only force OFF.
+  // This means a runtime UI toggle (when wired) cannot escalate beyond what
+  // the deploy explicitly enables — a misconfigured or compromised UI can't
+  // turn on live transactions if the env keeps them off.
+  const envEnabled = process.env.PAXIOM_ENABLE_LIVE_TX === '1';
+  const liveTransactionsEnabled = opts.liveTransactionsEnabled === false
+    ? false
+    : envEnabled;
+  const profitable = reasons.length === 0;
+  if (!liveTransactionsEnabled) reasons.push('live_transactions_disabled');
+
   return {
     service: 'ARB-001',
-    dryRun: true,
-    executable: reasons.length === 0,
+    // dryRun is now an explicit caller flag (test / replay / what-if mode);
+    // distinct from the kill-switch so logs/dashboards can tell them apart.
+    dryRun: opts.dryRun === true,
+    liveTransactionsEnabled,
+    executable: profitable && liveTransactionsEnabled,
+    evaluatedAsProfitable: profitable,
     reasons,
     opportunity: opp,
     economics: {
@@ -70,7 +87,7 @@ export function evaluateOpportunity(input, opts = {}) {
       minSpreadPct: cfg.minSpreadPct,
       flashFeeRate: cfg.flashFeeRate,
       maxTimingGapMs: cfg.maxTimingGapMs,
-      liveTransactionsEnabled: process.env.PAXIOM_ENABLE_LIVE_TX === '1',
+      liveTransactionsEnabled,
     },
   };
 }
