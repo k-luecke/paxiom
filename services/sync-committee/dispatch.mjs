@@ -11,6 +11,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { assertNotStrictMode } from '../shared/deployment.mjs';
 
 // Read env on every call so tests can flip MOCK_DEVICE after import.
 function config() {
@@ -26,7 +27,10 @@ function config() {
 
 export async function dispatch(req) {
   const cfg = config();
-  if (cfg.mock) return mockDispatch(req);
+  if (cfg.mock) {
+    assertNotStrictMode('MOCK_DEVICE sync-committee dispatch', 'MOCK_DEVICE');
+    return mockDispatch(req);
+  }
   if (cfg.viaSubprocess) return harnessDispatch(req, cfg.harnessBin);
   return hyperbeamDispatch(req, cfg.hyperbeamDispatchUrl);
 }
@@ -44,7 +48,21 @@ async function hyperbeamDispatch(req, url) {
     const snippet = body.length > 256 ? body.slice(0, 256) + '…' : body;
     throw new Error(`hyperbeam dispatch returned ${resp.status}: ${snippet}`);
   }
-  return await resp.json();
+  return normalizeHyperbeamResponse(await resp.json());
+}
+
+function normalizeHyperbeamResponse(body) {
+  if (body && typeof body === 'object' && typeof body.body === 'string') {
+    try {
+      return JSON.parse(body.body);
+    } catch (e) {
+      throw new Error(`hyperbeam response body was not JSON: ${body.body.slice(0, 200)}`);
+    }
+  }
+  if (body && typeof body === 'object' && body.body && typeof body.body === 'object') {
+    return body.body;
+  }
+  return body;
 }
 
 function harnessDispatch(req, harnessBin) {

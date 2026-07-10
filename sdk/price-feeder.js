@@ -1,7 +1,8 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'fs';
 
 const PROCESS_ID = 'w_MR7QlkfuRcfd3TQJPD1pzMwU5yEEyLMDjO0Ql8_5I';
-const LOG_FILE = '/home/mk19/paxiom/opportunities.log';
+const PAXIOM_DIR = process.env.PAXIOM_DIR || `${process.env.HOME}/paxiom`;
+const LOG_FILE   = process.env.LOG_FILE  || `${PAXIOM_DIR}/opportunities.log`;
 
 // `decimals` here is a derived scaling factor (NOT the ERC20 token's
 // decimals): it equals abs(token0.decimals - token1.decimals) where
@@ -26,7 +27,12 @@ const POOLS = [
 const spreadHistory = {};
 const velocityHistory = {};
 
-const TRADE_SIZE_USDC = 10_000000n;
+// Quote at the size you'd actually deploy. The previous $10 default measured
+// mid-price slippage only; useless for capital sizing. Set PAXIOM_QUOTE_SIZE_USDC
+// in whole dollars (e.g. 1000 for $1k, 50000 for $50k).
+const QUOTE_SIZE_DOLLARS = Number(process.env.PAXIOM_QUOTE_SIZE_USDC || 1000);
+const TRADE_SIZE_USDC = BigInt(QUOTE_SIZE_DOLLARS) * 1_000000n;
+console.log(`[QUOTE] size=$${QUOTE_SIZE_DOLLARS.toLocaleString()}`);
 
 const QUOTER_ADDRESSES = {
   optimism: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
@@ -139,7 +145,25 @@ async function quoteRealSpread(asset, buyChain, sellChain, spreadPct) {
   }
 }
 
-const FLASH_FEE = 0.0005;
+// ─── fee model ────────────────────────────────────────────────
+// Three modes; only one applies to a given run:
+//   solo            — Kyle is sole LP and sole user. Real cost = gas only.
+//   customer        — Future: external borrowers pay PaxiomPool's 0.09% fee.
+//   aave-benchmark  — Analytical: what the same trade would cost via Aave (0.05%).
+// Default is solo. Override with PAXIOM_FEE_MODE env var.
+const AAVE_BENCHMARK_FEE   = 0.0005;
+const PAXIOM_CUSTOMER_FEE  = 0.0009;
+const OWN_COST_FEE         = 0;
+
+const FEE_MODE = (process.env.PAXIOM_FEE_MODE || 'solo').toLowerCase();
+const ACTIVE_FEE = FEE_MODE === 'customer'        ? PAXIOM_CUSTOMER_FEE
+                 : FEE_MODE === 'aave-benchmark'  ? AAVE_BENCHMARK_FEE
+                 : OWN_COST_FEE;
+console.log(`[FEE] mode=${FEE_MODE} fee=${(ACTIVE_FEE * 100).toFixed(3)}%`);
+
+// Legacy alias kept so unmodified call sites keep working.
+const FLASH_FEE = ACTIVE_FEE;
+
 const GAS_COST = 50;
 const LOAN_SIZES = [1000000, 5000000, 10000000];
 
@@ -162,7 +186,7 @@ function getSettings(asset) {
   return SETTINGS[asset] || SETTINGS.default;
 }
 
-const STATE_FILE = '/home/mk19/paxiom/sdk/dedup-state.json';
+const STATE_FILE = process.env.STATE_FILE || `${PAXIOM_DIR}/sdk/dedup-state.json`;
 let dedupState = {};
 try {
   dedupState = JSON.parse(readFileSync(STATE_FILE, 'utf8'));

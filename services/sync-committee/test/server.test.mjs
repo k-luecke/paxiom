@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupResponseSigningKey } from '../../shared/test/sign-test-helper.mjs';
+import { createServer } from 'node:http';
 import { createApp } from '../server.mjs';
 
 setupResponseSigningKey();
@@ -103,6 +103,111 @@ test('verify rejects malformed signature length', async () => {
     assert.equal(body.error, 'invalid request');
   } finally {
     server.close();
+  }
+});
+
+test('verify rejects device responses for a different slot', async () => {
+  const oldMock = process.env.MOCK_DEVICE;
+  const oldViaSubprocess = process.env.BLS_DEVICE_VIA_SUBPROCESS;
+  const oldDispatch = process.env.HYPERBEAM_DISPATCH_URL;
+  delete process.env.MOCK_DEVICE;
+  delete process.env.BLS_DEVICE_VIA_SUBPROCESS;
+
+  const upstream = await listenOnEphemeralPort(createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const requested = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const payload = {
+      verified: true,
+      service: 'A-202',
+      slot: String(Number(requested.slot) + 1),
+      fork_version: '0x06000000',
+      domain: '0x' + 'a'.repeat(64),
+      signing_root: '0x' + 'b'.repeat(64),
+      participating: 432,
+      committee_size: 512,
+      primitive_return_code: 1,
+      platform_signature: '0x' + 'c'.repeat(64),
+      ao_message_id: `fake-ao-${requested.slot}`,
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payload));
+  }));
+  process.env.HYPERBEAM_DISPATCH_URL = `${upstream.url}/verify`;
+
+  const app = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${app.url}/v1/sync-committee/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wellFormedRequest),
+    });
+    assert.equal(resp.status, 502);
+    const body = await resp.json();
+    assert.equal(body.error, 'dispatch failed');
+    assert.match(body.detail, /device response slot mismatch/);
+    assert.match(body.detail, /request\.slot=8421337 response\.slot=8421338/);
+  } finally {
+    if (oldMock === undefined) delete process.env.MOCK_DEVICE;
+    else process.env.MOCK_DEVICE = oldMock;
+    if (oldViaSubprocess === undefined) delete process.env.BLS_DEVICE_VIA_SUBPROCESS;
+    else process.env.BLS_DEVICE_VIA_SUBPROCESS = oldViaSubprocess;
+    if (oldDispatch === undefined) delete process.env.HYPERBEAM_DISPATCH_URL;
+    else process.env.HYPERBEAM_DISPATCH_URL = oldDispatch;
+    app.server.close();
+    upstream.server.close();
+  }
+});
+
+test('verify accepts HyperBEAM responses wrapped in a body string', async () => {
+  const oldMock = process.env.MOCK_DEVICE;
+  const oldViaSubprocess = process.env.BLS_DEVICE_VIA_SUBPROCESS;
+  const oldDispatch = process.env.HYPERBEAM_DISPATCH_URL;
+  delete process.env.MOCK_DEVICE;
+  delete process.env.BLS_DEVICE_VIA_SUBPROCESS;
+
+  const upstream = await listenOnEphemeralPort(createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const requested = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const payload = {
+      verified: false,
+      service: 'A-202',
+      slot: requested.slot,
+      fork_version: '0x06000000',
+      domain: '0x' + 'a'.repeat(64),
+      signing_root: '0x' + 'b'.repeat(64),
+      participating: 0,
+      committee_size: 512,
+      primitive_return_code: -5,
+      platform_signature: '0x' + 'c'.repeat(64),
+      ao_message_id: `hb-ao-${requested.slot}`,
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 200, body: JSON.stringify(payload) }));
+  }));
+  process.env.HYPERBEAM_DISPATCH_URL = `${upstream.url}/verify`;
+
+  const app = await listenOnEphemeralPort(createApp());
+  try {
+    const resp = await fetch(`${app.url}/v1/sync-committee/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(wellFormedRequest),
+    });
+    assert.equal(resp.status, 200);
+    const body = await resp.json();
+    assert.equal(body.artifact.payload.slot, wellFormedRequest.slot);
+    assert.equal(body.auditRecord.aoMessageId, `hb-ao-${wellFormedRequest.slot}`);
+  } finally {
+    if (oldMock === undefined) delete process.env.MOCK_DEVICE;
+    else process.env.MOCK_DEVICE = oldMock;
+    if (oldViaSubprocess === undefined) delete process.env.BLS_DEVICE_VIA_SUBPROCESS;
+    else process.env.BLS_DEVICE_VIA_SUBPROCESS = oldViaSubprocess;
+    if (oldDispatch === undefined) delete process.env.HYPERBEAM_DISPATCH_URL;
+    else process.env.HYPERBEAM_DISPATCH_URL = oldDispatch;
+    app.server.close();
+    upstream.server.close();
   }
 });
 

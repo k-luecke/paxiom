@@ -1,10 +1,13 @@
 import { createServer } from 'node:http';
 import { LoadNetworkClient } from '../../load-network/client.mjs';
+import { ErigonProofClient } from '../../load-network/erigon-client.mjs';
 import { reconstructStorageSlot } from '../../load-network/reconstruct.mjs';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
 import { createServiceEnvelope } from '../shared/envelope.mjs';
 import { requirePayment, paymentResponseHeaders } from '../shared/x402.mjs';
 import { fixtureFetch } from '../load-network/fixture-client.mjs';
+import { assertNotStrictMode } from '../shared/deployment.mjs';
+import { archiveEvidence } from '../shared/proof-archive.mjs';
 
 const PORT = Number(process.env.SLOT_STORAGE_PROOF_PORT || 8091);
 const HOST = process.env.SLOT_STORAGE_PROOF_HOST || '127.0.0.1';
@@ -31,32 +34,42 @@ async function handleProof(req, res, client, resource) {
       slot: body.slot,
       client,
     });
+    const payload = {
+      verified: proof.verified,
+      block_number: proof.block_number,
+      block_hash: proof.block_hash,
+      state_root: proof.state_root,
+      address: proof.address,
+      storage_root: proof.storage_root,
+      slot: proof.slot,
+      value: proof.value,
+      source: proof.source,
+      archive_root: proof.archive_root,
+      witness: proof.witness,
+      zk_proof: {
+        status: 'not_generated_in_reference_service',
+        note: 'MPT witness packet is ready for the Service 01 ZK circuit.',
+      },
+    };
+    const evidenceTags = ['service:A-201', `block:${proof.block_number}`, `address:${proof.address}`, `slot:${proof.slot}`];
+    const audit = await archiveEvidence({
+      service: 'A-201',
+      artifactType: 'slot_storage_proof_packet',
+      payload,
+      request: {
+        blockNumber: body.blockNumber,
+        address: body.address,
+        slot: body.slot,
+      },
+      evidenceTags,
+    });
     const envelope = createServiceEnvelope({
       service: 'A-201',
       serviceName: 'Slot Storage Proofs',
       artifactType: 'slot_storage_proof_packet',
       payment: paid.payment,
-      audit: {
-        status: 'pending_write',
-        evidenceTags: ['service:A-201', `block:${proof.block_number}`, `address:${proof.address}`, `slot:${proof.slot}`],
-      },
-      payload: {
-        verified: proof.verified,
-        block_number: proof.block_number,
-        block_hash: proof.block_hash,
-        state_root: proof.state_root,
-        address: proof.address,
-        storage_root: proof.storage_root,
-        slot: proof.slot,
-        value: proof.value,
-        source: proof.source,
-        archive_root: proof.archive_root,
-        witness: proof.witness,
-        zk_proof: {
-          status: 'not_generated_in_reference_service',
-          note: 'MPT witness packet is ready for the Service 01 ZK circuit.',
-        },
-      },
+      audit,
+      payload,
     });
     return sendJson(res, 200, envelope, paymentResponseHeaders(paid.payment, { correlation: proof.block_hash }));
   } catch (e) {
@@ -66,7 +79,11 @@ async function handleProof(req, res, client, resource) {
 
 function defaultClient() {
   if (process.env.MOCK_LOAD_NETWORK === '1') {
+    assertNotStrictMode('MOCK_LOAD_NETWORK fixture client', 'MOCK_LOAD_NETWORK');
     return new LoadNetworkClient({ fetchImpl: fixtureFetch() });
+  }
+  if (process.env.PAXIOM_STATE_SOURCE === 'erigon') {
+    return new ErigonProofClient();
   }
   return new LoadNetworkClient();
 }

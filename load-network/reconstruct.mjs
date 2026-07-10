@@ -1,11 +1,11 @@
-// State reconstruction from Load Network archive data.
+// State reconstruction from archive proof data.
 //
 // Closes Phase 0 / A-120 / S.03 and the no-RPC architectural moat
 // (paxiom-build-map R-200). Every value this module returns has been
 // MPT-verified against a state root the caller can independently audit.
-// There is NO fallback to a conventional RPC provider anywhere in this
-// pipeline — if load.network can't satisfy a request, the failure is
-// surfaced to the caller, not silently routed around.
+// Inputs may come from load.network or from Paxiom's local Erigon
+// warehouse, but there is still NO fallback to an unverified RPC result:
+// if a proof source cannot satisfy the request, the failure is surfaced.
 //
 // Pipeline (unchanged in shape from Phase 0; what changed is that step 3
 // now actually verifies):
@@ -88,7 +88,7 @@ export async function reconstructAccountState({
     nonce:        account.nonce,
     code_hash:    account.code_hash,
     storage_root: account.storage_root,
-    source:       'load.network',
+    source:       block.source || account.source || 'load.network',
     archive_root: block.archive_root,
     verified:     true,
     // Witness shape consumed by Service 01's ZK circuit. This is the
@@ -135,7 +135,7 @@ export async function reconstructStorageSlot({
     storage_root: accountResult.storage_root,
     slot,
     value:        slotResp.value,
-    source:       'load.network',
+    source:       accountResult.source,
     archive_root: accountResult.archive_root,
     verified:     true,
     // Combined witness for the slot — both the account proof (binds

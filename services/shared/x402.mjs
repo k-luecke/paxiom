@@ -130,7 +130,7 @@ export async function requirePayment(req, res, cfg) {
   if (process.env.REQUIRE_X402 !== '1') {
     return {
       ok: true,
-      payment: { mode: 'disabled', verified: true, settlementRequired: false },
+      payment: { mode: 'disabled', verified: false, settled: false, settlementRequired: false },
     };
   }
 

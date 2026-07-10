@@ -35,6 +35,7 @@ async function handleVerify(req, res) {
   let response;
   try {
     response = await dispatch(body);
+    validateDeviceResponse(body, response);
   } catch (e) {
     return sendJson(res, 502, { error: 'dispatch failed', detail: String(e) });
   }
@@ -62,6 +63,29 @@ export function createApp() {
     if (url.pathname === '/healthz') return sendJson(res, 200, { ok: true, service: 'A-202' });
     return notFound(res);
   });
+}
+
+export function validateDeviceResponse(request, response) {
+  if (!response || typeof response !== 'object') {
+    throw new Error('device response must be an object');
+  }
+  if (response.service !== 'A-202') {
+    throw new Error(`device response service mismatch: expected A-202 got ${response.service ?? '<missing>'}`);
+  }
+  if (!sameSlot(request.slot, response.slot)) {
+    throw new Error(
+      `device response slot mismatch: request.slot=${request.slot} response.slot=${response.slot ?? '<missing>'}`,
+    );
+  }
+}
+
+function sameSlot(a, b) {
+  try {
+    if (!/^[0-9]+$/.test(String(a)) || !/^[0-9]+$/.test(String(b))) return false;
+    return BigInt(a) === BigInt(b);
+  } catch {
+    return false;
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
