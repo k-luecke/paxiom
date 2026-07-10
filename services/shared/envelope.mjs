@@ -29,6 +29,9 @@ export function createServiceEnvelope({
     payment: payment ? {
       mode: payment.mode,
       verified: payment.verified,
+      settled: payment.settled === true,
+      settled_tx: payment.settled_tx || null,
+      network: payment.network || null,
       receiptId: payment.receiptId || null,
     } : null,
   };

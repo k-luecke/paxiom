@@ -61,11 +61,40 @@ Set `REQUIRE_X402=1` to require payment headers. A request without
 Successful protected calls return `PAYMENT-RESPONSE`,
 `X-PAYMENT-RESPONSE`, and `X-PAYMENT-RESPONSE-CORRELATION`.
 
-If `X402_FACILITATOR_URL` is set, verification is delegated to
-`<url>/verify`. Otherwise local header acceptance is disabled unless
+If `X402_FACILITATOR_URL` is set, the gate delegates to the facilitator:
+`<url>/verify` confirms the signed EIP-3009 authorization, then `<url>/settle`
+broadcasts the on-chain USDC transfer and returns the settlement tx hash
+(surfaced as `settled_tx` in the response receipt and signed envelope).
+Settlement runs before the resource is served, so a served response always
+corresponds to a settled payment; a failed settlement falls back to `402`.
+Otherwise local header acceptance is disabled unless
 `PAXIOM_ALLOW_LOCAL_X402=1` is explicitly set for local development. In
 `PAXIOM_DEPLOYMENT_MODE=testnet|staging|production`, missing facilitator
 configuration fails closed.
+
+The on-wire challenge is x402-facilitator-compatible: `asset` is the token
+**contract address**, `maxAmountRequired` is in **atomic units**, and `extra`
+carries the EIP-712 domain (`name`/`version`) the exact-scheme authorization is
+signed over. Protocol version defaults to `1` (`X402_PROTOCOL_VERSION`) to match
+the public `x402.org` facilitator's EVM `base-sepolia` support.
+
+### Proven paid round-trip
+
+`scripts/run-x402-roundtrip.sh` proves the loop end-to-end
+(`buyer client -> service -> facilitator`). Default target is a local mock
+facilitator (`scripts/mock-facilitator.mjs`) with real EIP-712 recovery and
+simulated settlement (offline, spends nothing). Against the real public
+facilitator:
+
+```bash
+X402_FACILITATOR_URL=https://x402.org/facilitator scripts/run-x402-roundtrip.sh
+```
+
+First real Base Sepolia settlement (A-204, $0.05, EIP-3009 gasless — facilitator
+paid gas): tx
+`0x2ff7ef320a2567f1e358a46609e02182637e179b63fbe9f24e46b4d650d0f701`
+(block 43,942,605, status success). Payer wallet
+`0xaAD362e695471CC6a9aC1b6d04D3A7581B67864D`.
 
 When `REQUIRE_X402=0`, endpoints may still serve private testnet proofs, but
 the response payment metadata is intentionally `verified:false` and
