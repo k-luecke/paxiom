@@ -1,7 +1,8 @@
 import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { readFileSync } from 'fs';
 import { pathToFileURL } from 'url';
-import { createHmac, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import { signSignal } from './signal-hmac.mjs';
 
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
 const EXECUTOR_URL    = 'http://127.0.0.1:7070/signal';
@@ -112,17 +113,16 @@ async function pollAOMonitor() {
 
     // Forward to executor (strip internal _signalId field)
     const { _signalId, ...oppClean } = opp;
-    const body  = JSON.stringify(oppClean);
-    const ts    = Date.now().toString();
-    const nonce = randomBytes(16).toString('hex');
-    const hmac  = createHmac('sha256', getSignalHmacKey()).update(`${ts}.${nonce}.${body}`).digest('hex');
+    const body = JSON.stringify(oppClean);
+    // Headers come from signSignal so the signed string stays defined in one
+    // place. Hand-rolling `${ts}.${nonce}.${body}` here would let this drift
+    // out of step with the verifier in sdk/signal-hmac.mjs and silently break
+    // every forwarded signal.
     const resp = await fetch(EXECUTOR_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Paxiom-Signal-Ts': ts,
-        'X-Paxiom-Signal-Nonce': nonce,
-        'X-Paxiom-Signal-Hmac': hmac,
+        ...signSignal({ raw: body, key: getSignalHmacKey(), nonce: randomBytes(16).toString('hex') }),
       },
       body,
     });

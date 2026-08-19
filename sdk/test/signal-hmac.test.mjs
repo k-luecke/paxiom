@@ -140,6 +140,34 @@ test('nonce cap still rejects when the set is full of live entries', () => {
   assert.equal(verifySignal({ headers, raw, key: KEY, now, state }), 'nonce-cap');
 });
 
+test('non-numeric timestamps are rejected', () => {
+  // `Math.abs(now - Number(ts)) > WINDOW` is false when ts is NaN, so the
+  // pre-extraction check let a garbage timestamp through to the HMAC compare.
+  const state = createSignalState();
+  const { headers, raw, now } = authentic();
+  for (const bad of ['not-a-number', '', 'NaN', 'Infinity']) {
+    assert.equal(
+      verifySignal({ headers: { ...headers, 'x-paxiom-signal-ts': bad }, raw, key: KEY, now, state }),
+      bad === '' ? 'missing-headers' : 'stale-timestamp',
+      `ts=${JSON.stringify(bad)} should be rejected`
+    );
+  }
+});
+
+test('round-trip: headers as sdk/ao-poller.js sends them are accepted', () => {
+  // ao-poller signs with signSignal and sends Title-Cased header names;
+  // node:http lower-cases them before the verifier sees them. This asserts
+  // the producer and the verifier agree on the signed string.
+  const body = JSON.stringify({ asset: 'WETH', spreadPct: '0.5', buyChain: 'base', sellChain: 'optimism' });
+  const sent = signSignal({ raw: body, key: KEY, nonce: 'poller-nonce' });
+  const asServerSeesThem = Object.fromEntries(
+    Object.entries(sent).map(([k, v]) => [k.toLowerCase(), v]));
+  assert.equal(
+    verifySignal({ headers: asServerSeesThem, raw: body, key: KEY, state: createSignalState() }),
+    null
+  );
+});
+
 test('regression: verification computes an HMAC without a ReferenceError', () => {
   // sdk/live-executor.js used createHmac/timingSafeEqual without importing
   // them, so every request that reached the signature comparison threw
