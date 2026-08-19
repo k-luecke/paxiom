@@ -17,6 +17,8 @@ if (!PUBKEY_CACHE) {
   throw new Error('PUBKEY_CACHE env var is required (path to pubkey cache JSON file)');
 }
 const CACHE_TTL = 24 * 60 * 60 * 1000;
+// EPOCHS_PER_SYNC_COMMITTEE_PERIOD (256) * SLOTS_PER_EPOCH (32).
+const SLOTS_PER_PERIOD = 8192;
 
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -31,35 +33,59 @@ function chunkArray(arr, size) {
   return chunks;
 }
 
+// A sync committee lists 512 validator positions IN COMMITTEE ORDER, and the
+// same validator frequently occupies several of them, so `indices` contains
+// duplicates. The `/validators?id=...` endpoint returns matches sorted by
+// validator index and de-duplicated — it does NOT echo the query order.
+// Pushing pubkeys in response order scrambles the bit<->pubkey mapping and
+// collapses duplicates, so the aggregate never matches the signature. Same
+// root cause as bls-verifier#6 / #55; this is the JS copy of it.
+//
+// Query the UNIQUE indices, key the map on each entry's own `index` field,
+// then rebuild in committee order, repeating duplicates.
 async function fetchPubkeys(indices) {
-  const pubkeys = [];
-  for (const chunk of chunkArray(indices, 10)) {
+  const unique = [...new Set(indices)];
+  const byIndex = new Map();
+  for (const chunk of chunkArray(unique, 10)) {
     const query = chunk.map(id => `id=${id}`).join('&');
     const url = `${BEACON_URL}/eth/v1/beacon/states/head/validators?${query}`;
     const json = await fetchJSON(url);
     if (json.data) {
       for (const v of json.data) {
-        pubkeys.push(v.validator.pubkey);
+        byIndex.set(String(v.index), v.validator.pubkey);
       }
     }
   }
-  return pubkeys;
+  return indices.map(i => {
+    const pk = byIndex.get(String(i));
+    if (!pk) {
+      throw new Error(`beacon did not return pubkey for committee validator ${i}`);
+    }
+    return pk;
+  });
 }
 
-async function getPubkeys(indices) {
+// The cache is keyed on the sync-committee `period`, not on pubkey count.
+// Committee size is a constant 512, so the old `cache.pubkeys.length ===
+// indices.length` guard was a tautology: two committees from different
+// periods collided, leaving the 24h TTL as the only thing keeping a stale
+// committee out. Clock skew or a container restore defeats a TTL; the period
+// is the actual identity of the set.
+async function getPubkeys(indices, period) {
   if (existsSync(PUBKEY_CACHE)) {
     const cache = JSON.parse(readFileSync(PUBKEY_CACHE, 'utf-8'));
     const age = Date.now() - cache.timestamp;
-    if (age < CACHE_TTL && cache.pubkeys.length === indices.length) {
-      console.log(`Using cached pubkeys (${Math.round(age / 60000)}min old)`);
+    if (age < CACHE_TTL && cache.period === period
+        && cache.pubkeys.length === indices.length) {
+      console.log(`Using cached pubkeys (period ${period}, ${Math.round(age / 60000)}min old)`);
       return cache.pubkeys;
     }
   }
 
   console.log('Fetching pubkeys (cache miss)...');
   const pubkeys = await fetchPubkeys(indices);
-  writeFileSync(PUBKEY_CACHE, JSON.stringify({ timestamp: Date.now(), pubkeys }));
-  console.log(`Fetched and cached ${pubkeys.length} pubkeys`);
+  writeFileSync(PUBKEY_CACHE, JSON.stringify({ timestamp: Date.now(), period, pubkeys }));
+  console.log(`Fetched and cached ${pubkeys.length} pubkeys for period ${period}`);
   return pubkeys;
 }
 
@@ -115,7 +141,8 @@ async function main() {
   const indices = sc.data.validators;
   console.log(`Got ${indices.length} sync committee indices`);
 
-  const pubkeys = await getPubkeys(indices);
+  const period = Math.floor(Number(slot) / SLOTS_PER_PERIOD);
+  const pubkeys = await getPubkeys(indices, period);
 
   const verifierInput = JSON.stringify({
     signature: syncAggregate.sync_committee_signature,

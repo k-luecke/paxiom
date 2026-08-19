@@ -1,22 +1,46 @@
 import { createDataItemSigner, message, result } from '@permaweb/aoconnect';
 import { readFileSync } from 'fs';
-import { createHmac, randomBytes } from 'crypto';
+import { pathToFileURL } from 'url';
+import { randomBytes } from 'crypto';
+import { signSignal } from './signal-hmac.mjs';
 
 const MONITOR_PROCESS = 'JbsXrqoy26CAE8_agv9ZX2aeL8-ec06yGETP7-6IvUg';
 const EXECUTOR_URL    = 'http://127.0.0.1:7070/signal';
 const POLL_INTERVAL   = 8000;
-const AR_WALLET       = process.env.AR_WALLET;
-if (!AR_WALLET) {
-  throw new Error('AR_WALLET env var is required (path to Arweave wallet JSON, e.g. ~/.aos.json)');
-}
-const SIGNAL_HMAC_HEX = process.env.PAXIOM_EXEC_SIGNAL_HMAC_KEY;
-if (!SIGNAL_HMAC_HEX || Buffer.from(SIGNAL_HMAC_HEX, 'hex').length < 32) {
-  throw new Error('PAXIOM_EXEC_SIGNAL_HMAC_KEY required (>=32 bytes hex); shared secret with sdk/live-executor.js');
-}
-const SIGNAL_HMAC_KEY = Buffer.from(SIGNAL_HMAC_HEX, 'hex');
 
-const wallet = JSON.parse(readFileSync(AR_WALLET, 'utf8'));
-const signer = createDataItemSigner(wallet);
+// Config reads and the wallet read are deferred behind memoized getters.
+// At module load this file must do nothing observable: importing it from a
+// test or an analyzer previously read the Arweave wallet off disk and threw
+// if the env was unset, which made the module impossible to load without a
+// full runtime environment.
+function requireEnv(name, describe, validate) {
+  const value = process.env[name];
+  if (!value || (validate && !validate(value))) {
+    throw new Error(`${name} ${describe}`);
+  }
+  return value;
+}
+
+let _signer;
+export function getSigner() {
+  if (!_signer) {
+    const path = requireEnv('AR_WALLET',
+      'env var is required (path to Arweave wallet JSON, e.g. ~/.aos.json)');
+    _signer = createDataItemSigner(JSON.parse(readFileSync(path, 'utf8')));
+  }
+  return _signer;
+}
+
+let _signalHmacKey;
+function getSignalHmacKey() {
+  if (!_signalHmacKey) {
+    const hex = requireEnv('PAXIOM_EXEC_SIGNAL_HMAC_KEY',
+      'required (>=32 bytes hex); shared secret with sdk/live-executor.js',
+      v => Buffer.from(v, 'hex').length >= 32);
+    _signalHmacKey = Buffer.from(hex, 'hex');
+  }
+  return _signalHmacKey;
+}
 
 let lastSignalCount = 0;
 let lastSignalId    = '';
@@ -64,7 +88,7 @@ async function pollAOMonitor() {
     const msgId = await message({
       process: MONITOR_PROCESS,
       tags: [{ name: 'Action', value: 'GetStatus' }],
-      signer
+      signer: getSigner()
     });
 
     const res = await result({ process: MONITOR_PROCESS, message: msgId });
@@ -89,17 +113,16 @@ async function pollAOMonitor() {
 
     // Forward to executor (strip internal _signalId field)
     const { _signalId, ...oppClean } = opp;
-    const body  = JSON.stringify(oppClean);
-    const ts    = Date.now().toString();
-    const nonce = randomBytes(16).toString('hex');
-    const hmac  = createHmac('sha256', SIGNAL_HMAC_KEY).update(`${ts}.${nonce}.${body}`).digest('hex');
+    const body = JSON.stringify(oppClean);
+    // Headers come from signSignal so the signed string stays defined in one
+    // place. Hand-rolling `${ts}.${nonce}.${body}` here would let this drift
+    // out of step with the verifier in sdk/signal-hmac.mjs and silently break
+    // every forwarded signal.
     const resp = await fetch(EXECUTOR_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Paxiom-Signal-Ts': ts,
-        'X-Paxiom-Signal-Nonce': nonce,
-        'X-Paxiom-Signal-Hmac': hmac,
+        ...signSignal({ raw: body, key: getSignalHmacKey(), nonce: randomBytes(16).toString('hex') }),
       },
       body,
     });
@@ -111,10 +134,21 @@ async function pollAOMonitor() {
   }
 }
 
-console.log('PaxiomAOPoller running');
-console.log(`Monitor: ${MONITOR_PROCESS}`);
-console.log(`Executor: ${EXECUTOR_URL}`);
-console.log(`Wallet: ${AR_WALLET}\n`);
+export function main() {
+  // Fail fast on a bad environment, at startup rather than on the first poll.
+  getSigner();
+  getSignalHmacKey();
 
-setInterval(pollAOMonitor, POLL_INTERVAL);
-pollAOMonitor();
+  console.log('PaxiomAOPoller running');
+  console.log(`Monitor: ${MONITOR_PROCESS}`);
+  console.log(`Executor: ${EXECUTOR_URL}`);
+  console.log(`Wallet: ${process.env.AR_WALLET}\n`);
+
+  setInterval(pollAOMonitor, POLL_INTERVAL);
+  pollAOMonitor();
+}
+
+// Only poll when invoked as a script. Importing the module is inert.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
