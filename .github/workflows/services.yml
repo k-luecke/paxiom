@@ -34,3 +34,6 @@ jobs:
 
       - name: ConfigStore + x402 runtime config tests
         run: npm run test:config-store
+
+      - name: Operator console + wallet registry tests
+        run: npm run test:ui

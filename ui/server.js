@@ -5,15 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { verifyMessage } from 'viem';
 import { phase1Catalog } from '../services/catalog/phase1.mjs';
+import {
+  ROLE_ADMIN, assertBootConfig, isAllowed, roleFor, snapshot as walletSnapshot,
+  addWallet, removeWallet, setWalletRole, normalizeAddress,
+} from './wallet-registry.mjs';
 
 const PORT = Number(process.env.PAXIOM_UI_PORT || 3000);
 const HOST = process.env.PAXIOM_UI_HOST || '127.0.0.1';
 const here = dirname(fileURLToPath(import.meta.url));
-
-const ALLOWED_WALLETS = Object.freeze(parseAllowedWallets(process.env.PAXIOM_ALLOWED_WALLETS));
-if (ALLOWED_WALLETS.size === 0) {
-  throw new Error('PAXIOM_ALLOWED_WALLETS must list >=1 valid 0x-address (40 hex chars); refusing to start');
-}
 
 const sessions = new Map();
 const nonces = new Map();
@@ -33,6 +32,10 @@ const SERVICE_HEALTH = [
 ];
 
 export function createApp() {
+  // Refuse to start without an env seed (M-18). Checked here rather than at
+  // module load so this file can be imported by a test without a full
+  // environment; the refusal still precedes accepting any connection.
+  assertBootConfig();
   return createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
@@ -52,6 +55,33 @@ export function createApp() {
       if (req.method === 'POST' && url.pathname === '/api/session/verify') {
         const body = await readJson(req);
         return sendJson(res, 200, await verifyLogin(body));
+      }
+      if (req.method === 'GET' && url.pathname === '/api/wallets') {
+        if (!adminOrReject(req, res)) return;
+        return sendJson(res, 200, walletSnapshot());
+      }
+      if (req.method === 'POST' && url.pathname === '/api/wallets') {
+        const session = adminOrReject(req, res);
+        if (!session) return;
+        const body = await readJson(req);
+        return sendJson(res, 200, addWallet({
+          address: body.address, role: body.role, reason: body.reason, actor: session.address,
+        }));
+      }
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/wallets/')) {
+        const session = adminOrReject(req, res);
+        if (!session) return;
+        const address = decodeURIComponent(url.pathname.slice('/api/wallets/'.length));
+        return sendJson(res, 200, removeWallet({ address, actor: session.address }));
+      }
+      if (req.method === 'POST' && /^\/api\/wallets\/[^/]+\/role$/.test(url.pathname)) {
+        const session = adminOrReject(req, res);
+        if (!session) return;
+        const address = decodeURIComponent(url.pathname.split('/')[3]);
+        const body = await readJson(req);
+        return sendJson(res, 200, setWalletRole({
+          address, role: body.role, reason: body.reason, actor: session.address,
+        }));
       }
       if (req.method === 'GET' && url.pathname === '/healthz') {
         return sendJson(res, 200, { ok: true, service: 'PAXIOM-UI' });
@@ -151,7 +181,11 @@ export function createApp() {
       return sendJson(res, 404, { error: 'not_found', detail: url.pathname });
     } catch (e) {
       const status = Number.isInteger(e.status) ? e.status : 500;
-      const error = status === 403 ? 'forbidden' : status === 500 ? 'ui_server_error' : 'bad_request';
+      const error = status === 403 ? 'forbidden'
+        : status === 409 ? 'conflict'
+        : status === 404 ? 'not_found'
+        : status === 500 ? 'ui_server_error'
+        : 'bad_request';
       return sendJson(res, status, { error, detail: e.message });
     }
   });
@@ -261,6 +295,36 @@ function authOrReject(req, res) {
     sendJson(res, 401, { error: 'authentication_required', detail: 'connect MetaMask and sign the login challenge' });
     return null;
   }
+  // Re-check the allowlist on every request, not just at login. Sessions
+  // outlive the roster: without this, removing a wallet (#90) would leave its
+  // existing token working until the process restarted, so "remove" would not
+  // actually revoke anything. Dropping the session here makes removal
+  // immediate and forces a fresh SIWE login if the wallet is re-added.
+  if (!isAllowed(session.address)) {
+    sessions.delete(session.token);
+    sendJson(res, 403, {
+      error: 'forbidden',
+      detail: 'wallet is no longer allowlisted for this private console',
+    });
+    return null;
+  }
+  return session;
+}
+
+// Admin-only gate for the operator-configuration surfaces. Session first, so
+// an unauthenticated caller gets 401 rather than being told a route is
+// admin-only. #92, #96, #98 and #106 gate on this too.
+function adminOrReject(req, res) {
+  const session = authOrReject(req, res);
+  if (!session) return null;
+  if (session.address === 'auth-disabled') return session;
+  if (roleFor(session.address) !== ROLE_ADMIN) {
+    sendJson(res, 403, {
+      error: 'forbidden',
+      detail: 'this operation requires an admin wallet',
+    });
+    return null;
+  }
   return session;
 }
 
@@ -357,29 +421,30 @@ async function verifyLogin({ address, nonce, signature }) {
 
   nonces.delete(nonce);
   const token = randomUUID();
+  // Resolved once here for the response. Authorization is re-checked per
+  // request against the live roster, so this field is a UI hint, not the
+  // thing that grants access.
+  const role = roleFor(address);
   const session = {
     token,
     address,
     authenticatedAt: new Date().toISOString(),
-    capabilities: ['catalog:read', 'services:probe', 'wallet:x402-ready'],
+    role,
+    capabilities: [
+      'catalog:read', 'services:probe', 'wallet:x402-ready',
+      ...(role === ROLE_ADMIN ? ['wallets:admin'] : []),
+    ],
   };
   sessions.set(token, session);
   return { ok: true, session };
 }
 
 function assertAllowedWallet(address) {
-  if (!ALLOWED_WALLETS.has(String(address || '').toLowerCase())) {
+  if (!isAllowed(address)) {
     const err = new Error('wallet is not allowlisted for this private console');
     err.status = 403;
     throw err;
   }
-}
-
-function parseAllowedWallets(raw) {
-  return new Set(String(raw || '')
-    .split(',')
-    .map((wallet) => wallet.trim().toLowerCase())
-    .filter((wallet) => /^0x[0-9a-f]{40}$/.test(wallet)));
 }
 
 async function checkServices() {

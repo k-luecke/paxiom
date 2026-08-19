@@ -17,7 +17,7 @@
     "test:services": "node --test services/shared/test/config-store.test.mjs services/shared/test/x402-config.test.mjs services/shared/test/x402.test.mjs services/shared/test/readiness.test.mjs services/shared/test/proof-archive.test.mjs services/catalog/test/server.test.mjs services/load-network/test/server.test.mjs services/slot-storage-proof/test/server.test.mjs services/historical-state/test/server.test.mjs services/cross-chain-message/test/server.test.mjs services/simulation/test/server.test.mjs services/arb-engine/test/server.test.mjs services/arb-runner/test/server.test.mjs services/compliance/test/server.test.mjs",
     "test:sdk": "node --test sdk/test/signal-hmac.test.mjs",
     "test:config-store": "node --test services/shared/test/config-store.test.mjs services/shared/test/x402-config.test.mjs services/shared/test/x402.test.mjs",
-    "test:ui": "node --test ui/test/server.test.mjs",
+    "test:ui": "node --test ui/test/wallet-registry.test.mjs ui/test/server.test.mjs",
     "proof-archive:verify": "node scripts/proof-archive-verify.mjs",
     "erigon:proof-smoke": "node scripts/probe-erigon-proof-source.mjs",
     "foundation:verify-state": "node load-network/reconstruct-real.mjs",

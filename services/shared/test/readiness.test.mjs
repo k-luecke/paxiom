@@ -154,6 +154,46 @@ test('strict preflight rejects mocks and unsigned response envelopes', () => {
   }
 });
 
+test('strict preflight refuses the auth-disable bypass (#90)', () => {
+  // PAXIOM_DISABLE_AUTH=1 turns off operator authentication outright. In a
+  // strict deployment that makes the wallet roster decorative, so preflight
+  // must refuse to start rather than serve an open console.
+  const restore = snapshotEnv([
+    'PAXIOM_DISABLE_AUTH',
+    'PAXIOM_DEPLOYMENT_MODE',
+    'PAXIOM_ENV',
+    'PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM',
+    'PAXIOM_RESPONSE_SIGNING_KEY_ID',
+    'REQUIRE_X402',
+  ]);
+  process.env.PAXIOM_DEPLOYMENT_MODE = 'production';
+  process.env.PAXIOM_DISABLE_AUTH = '1';
+  process.env.REQUIRE_X402 = '0';
+  process.env.PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM = 'pem';
+  process.env.PAXIOM_RESPONSE_SIGNING_KEY_ID = 'key-1';
+  delete process.env.PAXIOM_ENV;
+
+  try {
+    const result = preflightService('ui');
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((e) => e.includes('PAXIOM_DISABLE_AUTH=1 disables operator authentication')));
+  } finally {
+    restore();
+  }
+});
+
+test('the auth-disable bypass is still allowed outside strict mode', () => {
+  const restore = snapshotEnv(['PAXIOM_DISABLE_AUTH', 'PAXIOM_DEPLOYMENT_MODE', 'PAXIOM_ENV']);
+  process.env.PAXIOM_DEPLOYMENT_MODE = 'development';
+  process.env.PAXIOM_DISABLE_AUTH = '1';
+  delete process.env.PAXIOM_ENV;
+  try {
+    assert.equal(preflightService('ui').ok, true, 'local development is unaffected');
+  } finally {
+    restore();
+  }
+});
+
 test('strict preflight requires opt-in for reference-only services', () => {
   const restore = snapshotEnv([
     'PAXIOM_ALLOW_REFERENCE_SERVICES',

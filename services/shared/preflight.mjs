@@ -39,6 +39,16 @@ export function preflightService(service = '') {
     }
   }
 
+  // Not a mock flag, but the same category of development convenience: it
+  // disables operator authentication outright. A strict deployment running
+  // with this set has an unauthenticated console, and #90's wallet roster
+  // becomes decorative.
+  if (process.env.PAXIOM_DISABLE_AUTH === '1') {
+    errors.push(
+      `PAXIOM_DISABLE_AUTH=1 disables operator authentication entirely and is not allowed in ${deploymentMode()} mode`,
+    );
+  }
+
   if (process.env.REQUIRE_X402 === '1') {
     if (!process.env.X402_FACILITATOR_URL) {
       errors.push(`X402_FACILITATOR_URL is required when REQUIRE_X402=1 in ${deploymentMode()} mode`);
