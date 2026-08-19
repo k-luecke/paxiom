@@ -1,5 +1,10 @@
+# Paxiom Phase 1 service template. One instance per service:
+#   systemctl enable --now paxiom@sync-committee
+# Canonical host layout and the full runbook: docs/vps-deploy.md
+
 [Unit]
 Description=Paxiom %i service
+Documentation=https://github.com/k-luecke/paxiom/blob/main/docs/vps-deploy.md
 After=network-online.target
 Wants=network-online.target
 
@@ -7,20 +12,45 @@ Wants=network-online.target
 Type=simple
 User=paxiom
 Group=paxiom
-WorkingDirectory=/opt/paxiom
-EnvironmentFile=/etc/paxiom/paxiom.env
-ExecStart=/bin/sh /opt/paxiom/deploy/bin/paxiom-service-entrypoint.sh %i
+WorkingDirectory=/opt/paxiom/current
+
+# Shared settings first, then optional per-service overrides and secrets.
+# The leading '-' makes the per-service file optional, so a service that needs
+# no private material can run without one. Scope secrets this way rather than
+# putting every key in the shared file: sync-committee has no business reading
+# the executor's PRIVATE_KEY.
+EnvironmentFile=/etc/paxiom/env/paxiom.env
+EnvironmentFile=-/etc/paxiom/env/%i.env
+
+ExecStart=/bin/sh /opt/paxiom/current/deploy/bin/paxiom-service-entrypoint.sh %i
 Restart=always
 RestartSec=5
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=20
+SyslogIdentifier=paxiom-%i
+
+# New files (ConfigStore JSON, audit logs) are created 0600/0700 by default.
+# The ConfigStore contract in docs/vps-deploy.md depends on this.
+UMask=0077
+
+# Hardening. ProtectSystem=strict makes the whole filesystem read-only except
+# ReadWritePaths, so the service can only write to its own state and logs.
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 ReadWritePaths=/var/lib/paxiom /var/log/paxiom
-SyslogIdentifier=paxiom-%i
+# Deliberately NOT set: MemoryDenyWriteExecute. V8 needs W+X pages for JIT and
+# Node will not start with it enabled.
 
 [Install]
 WantedBy=multi-user.target

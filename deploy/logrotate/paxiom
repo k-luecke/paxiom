@@ -1,0 +1,26 @@
+# Install as /etc/logrotate.d/paxiom
+#
+# Services log to journald; this covers the FILE logs under /var/log/paxiom —
+# the compliance event log and the ConfigStore audit logs.
+#
+# `copytruncate` is deliberate. These files are opened in append mode and held
+# for the process lifetime, so renaming them out from under a running service
+# would leave it writing to an unlinked inode until the next restart.
+#
+# Audit logs carry a prev/next hash chain. Rotation does NOT break the chain —
+# the links are content hashes, not byte offsets — but a verifier must read the
+# rotated files in order, oldest first, to check it end to end. Keep enough
+# rotations to cover your retention obligation; `delaycompress` keeps the most
+# recent rotation readable without decompressing.
+
+/var/log/paxiom/*.log /var/log/paxiom/*.ndjson {
+    weekly
+    rotate 52
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0600 paxiom paxiom
+    su paxiom paxiom
+}
