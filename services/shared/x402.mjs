@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import {
+  facilitatorUrl, isFacilitatorVerified, priceFor, toAtomicAmount,
+} from './x402-config.mjs';
+
+// Re-exported: toAtomicAmount lives in x402-config.mjs so that module has no
+// dependency on this one, keeping the import edge one-directional.
+export { toAtomicAmount };
 
 const DEFAULT_DESTINATION = '0x0000000000000000000000000000000000000000';
 const DEFAULT_NETWORK = 'base-sepolia';
@@ -22,25 +29,6 @@ const NETWORKS = {
   },
 };
 
-// Prices are published in whole USDC; x402 carries the ATOMIC amount.
-const PRICE_BY_SERVICE = {
-  'A-201': '1.00',
-  'A-202': '0.50',
-  'A-203': '3.00',
-  'A-204': '0.05',
-  'A-205': '2.00',
-  'R-200': '0.02',
-  'ARB-001': '0.01',
-  'COMPLIANCE-001': '0.01',
-};
-
-// "0.50" -> "500000" (6dp). String math so we never touch float precision.
-export function toAtomicAmount(amount, decimals) {
-  const [whole, frac = ''] = String(amount).split('.');
-  const fracPadded = `${frac}${'0'.repeat(decimals)}`.slice(0, decimals);
-  return (BigInt(whole || '0') * 10n ** BigInt(decimals) + BigInt(fracPadded || '0')).toString();
-}
-
 export function paymentSignatureFrom(req) {
   return req.headers['payment-signature'] || req.headers['x-payment'] || '';
 }
@@ -48,10 +36,11 @@ export function paymentSignatureFrom(req) {
 export function createPaymentRequired({
   service,
   resource,
-  amount = PRICE_BY_SERVICE[service] || '0.01',
+  amount,
   network = process.env.X402_NETWORK || DEFAULT_NETWORK,
   destination = process.env.X402_DESTINATION || DEFAULT_DESTINATION,
 } = {}) {
+  amount = priceFor(service, { opts: { amount } });
   const net = NETWORKS[network] || NETWORKS[DEFAULT_NETWORK];
   const asset = process.env.X402_ASSET || net.asset;
   return {
@@ -200,13 +189,26 @@ async function facilitatorPost(url, payload) {
   });
 }
 
+// An operator selection that was ignored must be visible — silently using the
+// env URL would leave them believing a rotation took effect. Warn once per
+// distinct reason rather than on every paid request, which would bury the
+// message in its own repetitions.
+const warnedSelections = new Set();
+function warnRejectedSelection(reason) {
+  if (warnedSelections.has(reason)) return;
+  warnedSelections.add(reason);
+  console.warn(`[x402] ignoring stored facilitatorUrl (${reason}); using the env URL`);
+}
+
 // Runs the two-step x402 facilitator flow: /verify validates the signed
 // payment authorization, then /settle submits the on-chain transfer that
 // actually captures the funds. Verifying without settling means the customer
 // proved they *could* pay but no money moved — so settlement is what makes
 // the endpoint billable.
 async function verifyWithFacilitator(signature, cfg) {
-  const base = process.env.X402_FACILITATOR_URL.replace(/\/+$/, '');
+  const selected = facilitatorUrl();
+  if (selected.rejected) warnRejectedSelection(selected.rejected);
+  const base = selected.url;
   const requirements = createPaymentRequired(cfg);
   // The X-PAYMENT header is base64(JSON) per x402; facilitators expect the
   // decoded PaymentPayload object. Fall back to the raw value if it isn't
@@ -226,7 +228,7 @@ async function verifyWithFacilitator(signature, cfg) {
   } catch (e) {
     return { mode: 'facilitator', verified: false, settled: false, reason: `verify_error: ${e.message}` };
   }
-  const valid = verifyBody.isValid === true || verifyBody.verified === true;
+  const valid = isFacilitatorVerified(verifyBody);
   if (!valid) {
     return {
       mode: 'facilitator', verified: false, settled: false,

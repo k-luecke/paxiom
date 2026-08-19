@@ -31,3 +31,6 @@ jobs:
 
       - name: SDK signal-HMAC tests (live-executor /signal auth)
         run: npm run test:sdk
+
+      - name: ConfigStore + x402 runtime config tests
+        run: npm run test:config-store

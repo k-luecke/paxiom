@@ -168,3 +168,106 @@ test('missing payment returns 402 with x402 requirements', async () => {
     assert.match(required.resource, /\/v1\/sync-committee\/verify$/);
   });
 });
+
+// ── #96 wiring: the ConfigStore layer actually reaches requirePayment ──────
+//
+// x402-config.test.mjs proves the config module in isolation. These prove
+// x402.mjs really consults it — the join is where this would silently fail,
+// leaving a store that nothing reads.
+
+import { mkdtempSync } from 'node:fs';
+import { tmpdir as osTmpdir } from 'node:os';
+import { join as pathJoin } from 'node:path';
+import { writeConfig } from '../config-store.mjs';
+import { CONFIG_NAME, clearX402ConfigCache } from '../x402-config.mjs';
+
+async function withStore(value, run) {
+  const root = mkdtempSync(pathJoin(osTmpdir(), 'paxiom-x402-wire-'));
+  const saved = {
+    dir: process.env.PAXIOM_CONFIG_DIR,
+    log: process.env.PAXIOM_AUDIT_LOG_DIR,
+  };
+  process.env.PAXIOM_CONFIG_DIR = pathJoin(root, 'config');
+  process.env.PAXIOM_AUDIT_LOG_DIR = pathJoin(root, 'log');
+  clearX402ConfigCache();
+  if (value) {
+    writeConfig(CONFIG_NAME, value, { actor: '0xadmin', action: 'x402.update' });
+    clearX402ConfigCache();
+  }
+  try {
+    return await run();
+  } finally {
+    if (saved.dir === undefined) delete process.env.PAXIOM_CONFIG_DIR;
+    else process.env.PAXIOM_CONFIG_DIR = saved.dir;
+    if (saved.log === undefined) delete process.env.PAXIOM_AUDIT_LOG_DIR;
+    else process.env.PAXIOM_AUDIT_LOG_DIR = saved.log;
+    clearX402ConfigCache();
+  }
+}
+
+test('#96: a stored price override changes the 402 challenge amount', async () => {
+  await withStore(null, () => {
+    assert.equal(createPaymentRequired({ service: 'A-202' }).maxAmountRequired, '500000');
+  });
+  await withStore({ prices: { 'A-202': '2.50' } }, () => {
+    assert.equal(createPaymentRequired({ service: 'A-202' }).maxAmountRequired, '2500000',
+      'the operator price reaches the requirements the payer signs over');
+  });
+});
+
+test('#96: a caller-supplied amount cannot undercut the stored price', async () => {
+  await withStore({ prices: { 'A-202': '2.50' } }, () => {
+    assert.equal(
+      createPaymentRequired({ service: 'A-202', amount: '0.01' }).maxAmountRequired,
+      '2500000',
+    );
+    assert.equal(
+      createPaymentRequired({ service: 'A-202', amount: '9.00' }).maxAmountRequired,
+      '9000000',
+      'raising is still allowed',
+    );
+  });
+});
+
+test('#96: narrowing acceptedVerifyKeys rejects the legacy facilitator shape', async () => {
+  // The mock answers {verified:true} — accepted by default, refused once the
+  // operator narrows to the spec's isValid.
+  await withMockFacilitator(
+    {
+      '/verify': { verified: true, payer: '0xpayer' },
+      '/settle': { success: true, transaction: '0xtx', payer: '0xpayer' },
+    },
+    async () => {
+      await withStore(null, async () => {
+        const res = fakeRes();
+        const out = await requirePayment(fakeReq({ scheme: 'exact' }), res, CFG);
+        assert.equal(out.ok, true, 'legacy shape accepted by default');
+      });
+      await withStore({ acceptedVerifyKeys: ['isValid'] }, async () => {
+        const res = fakeRes();
+        const out = await requirePayment(fakeReq({ scheme: 'exact' }), res, CFG);
+        assert.equal(out.ok, false, 'narrowed verifier refuses {verified:true}');
+        assert.equal(res.statusCode, 402);
+      });
+    },
+  );
+});
+
+test('#96: a facilitator URL outside the approved set is ignored', async () => {
+  await withMockFacilitator(
+    {
+      '/verify': { isValid: true, payer: '0xpayer' },
+      '/settle': { success: true, transaction: '0xtx', payer: '0xpayer' },
+    },
+    async ({ calls }) => {
+      // The store names an unapproved host. The env floor must win, so the
+      // request still lands on the mock rather than the attacker's URL.
+      await withStore({ facilitatorUrl: 'https://attacker.example' }, async () => {
+        const res = fakeRes();
+        const out = await requirePayment(fakeReq({ scheme: 'exact' }), res, CFG);
+        assert.equal(out.ok, true);
+        assert.ok(calls.length >= 1, 'the approved facilitator was the one called');
+      });
+    },
+  );
+});
