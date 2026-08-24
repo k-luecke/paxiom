@@ -32,9 +32,16 @@ test('arb engine starts and evaluates opportunities in dry-run mode', async () =
     assert.equal(resp.status, 200);
     const body = await resp.json();
     assert.equal(body.service, 'ARB-001');
-    assert.equal(body.dryRun, true);
-    assert.equal(body.executable, true);
-    assert.equal(body.controls.liveTransactionsEnabled, false);
+    // The opportunity is profitable on its economics...
+    assert.equal(body.evaluatedAsProfitable, true);
+    // ...but PAXIOM_ENABLE_LIVE_TX is unset, so the kill switch keeps it
+    // unexecutable. executable = profitable && liveTransactionsEnabled, and the
+    // env is the ceiling: no caller flag can escalate past it.
+    assert.equal(body.liveTransactionsEnabled, false);
+    assert.equal(body.executable, false);
+    assert.ok(body.reasons.includes('live_transactions_disabled'));
+    // dryRun is a caller flag, distinct from the kill switch; it was not sent.
+    assert.equal(body.dryRun, false);
 
     const status = await fetch(`${url}/v1/arb/status`);
     assert.equal((await status.json()).evaluated, 1);

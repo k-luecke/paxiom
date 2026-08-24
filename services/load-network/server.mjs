@@ -4,6 +4,7 @@ import { ErigonProofClient } from '../../load-network/erigon-client.mjs';
 import { reconstructAccountState, reconstructStorageSlot } from '../../load-network/reconstruct.mjs';
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../shared/http.mjs';
 import { requirePayment, paymentResponseHeaders } from '../shared/x402.mjs';
+import { assertNotStrictMode } from '../shared/deployment.mjs';
 import { fixtureFetch } from './fixture-client.mjs';
 
 const PORT = Number(process.env.LOAD_NETWORK_SERVICE_PORT || 8081);
