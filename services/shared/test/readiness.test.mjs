@@ -48,7 +48,7 @@ test('disabled x402 does not claim payment verification or settlement', async ()
   }
 });
 
-test('local-header x402 verifier is opt-in development only', async () => {
+test('x402 refuses to serve paid endpoints without a facilitator', async () => {
   const restore = snapshotEnv([
     'PAXIOM_ALLOW_LOCAL_X402',
     'PAXIOM_DEPLOYMENT_MODE',
@@ -62,42 +62,29 @@ test('local-header x402 verifier is opt-in development only', async () => {
   delete process.env.PAXIOM_DEPLOYMENT_MODE;
   delete process.env.PAXIOM_ENV;
 
+  const call = () => requirePayment({
+    headers: { 'x-payment': encodeHeader({ payer: 'local-dev' }) },
+    url: '/v1/test',
+  }, fakeResponse(), {
+    service: 'A-202',
+    resource: '/v1/test',
+  });
+
   try {
-    const res = fakeResponse();
-    const result = await requirePayment({
-      headers: { 'x-payment': encodeHeader({ payer: 'local-dev' }) },
-      url: '/v1/test',
-    }, res, {
-      service: 'A-202',
-      resource: '/v1/test',
-    });
-    assert.equal(result.ok, false);
-    assert.equal(res.status, 503);
+    // Audit H-02: REQUIRE_X402=1 with no facilitator URL used to wave through
+    // any request carrying a non-empty payment header. It now refuses outright
+    // rather than degrading to a no-op verifier.
+    await assert.rejects(call, /X402_FACILITATOR_URL is unset/);
 
+    // NOTE — doc/code drift, needs an owner decision.
+    // docs/phase-1-service-catalog.md documents PAXIOM_ALLOW_LOCAL_X402=1 as a
+    // local-development opt-in past this guard, but the H-02 fix in
+    // services/shared/x402.mjs never implemented it: assertX402Configured()
+    // does not consult the flag. This asserts the code's actual, fail-closed
+    // behavior. Either implement the opt-in or drop it from the docs; do not
+    // relax the guard just to make the documented flag work.
     process.env.PAXIOM_ALLOW_LOCAL_X402 = '1';
-    const allowed = await requirePayment({
-      headers: { 'x-payment': encodeHeader({ payer: 'local-dev' }) },
-      url: '/v1/test',
-    }, fakeResponse(), {
-      service: 'A-202',
-      resource: '/v1/test',
-    });
-    assert.equal(allowed.ok, true);
-    assert.equal(allowed.payment.mode, 'local-header');
-    assert.equal(allowed.payment.verified, false);
-    assert.equal(allowed.payment.settled, false);
-
-    process.env.PAXIOM_DEPLOYMENT_MODE = 'testnet';
-    const strictRes = fakeResponse();
-    const strict = await requirePayment({
-      headers: { 'x-payment': encodeHeader({ payer: 'local-dev' }) },
-      url: '/v1/test',
-    }, strictRes, {
-      service: 'A-202',
-      resource: '/v1/test',
-    });
-    assert.equal(strict.ok, false);
-    assert.equal(strictRes.status, 503);
+    await assert.rejects(call, /X402_FACILITATOR_URL is unset/);
   } finally {
     restore();
   }
@@ -122,7 +109,7 @@ test('strict deployment mode refuses dev response signatures', () => {
       artifactType: 'test',
       payload: { verified: false },
       payment: { mode: 'disabled', verified: false },
-    }), /PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM is required in testnet mode/);
+    }), /PAXIOM_RESPONSE_SIGNING_PRIVATE_KEY_PEM is required/);
   } finally {
     restore();
   }

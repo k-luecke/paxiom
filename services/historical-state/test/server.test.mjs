@@ -40,7 +40,10 @@ test('A-205 returns verified historical storage state', async () => {
     assert.equal(body.artifact.payload.verified, true);
     assert.equal(body.auditRecord.target, 'Paxiom Proof Archive');
     assert.equal(body.auditRecord.status, 'archive_disabled');
-    assert.match(body.platformSignature.signature, /^dev:/);
+    // Audit H-01 removed the forgeable `dev:<sha256>` fallback; envelopes are
+    // now Ed25519-signed and the service refuses to start without a real key.
+    assert.equal(body.platformSignature.algorithm, 'ed25519');
+    assert.doesNotMatch(body.platformSignature.signature, /^dev:/);
   } finally {
     server.close();
   }
