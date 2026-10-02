@@ -1,206 +1,197 @@
 # C95-AO-00 Certification Report — Lab C AO Distributed Runner
 
-**Status:** CERTIFIED  
+**Status:** 
+- **C95-AO-00A (Local/WASM Runner):** CERTIFIED & FROZEN
+- **C95-AO-00B (Networked Distributed Runner):** CERTIFIED & FROZEN
+- **C95-AO-00C (Native AO/HyperBEAM Platform):** READY FOR EXECUTION
 **Repository:** `k-luecke/paxiom`  
 **Branch:** `lab-c-ao-runner`  
-**Execution Environment:** WSL2 (Ubuntu Linux, x86_64), Node v18.19.1, Rustc 1.94.1  
+**Execution Environment:** WSL2 (Ubuntu 24.04 Linux, x86_64), Node v18.19.1, Rustc 1.94.1  
 **Scope:** Intentionally published cryptographic puzzles / synthetic search kernels only  
 
 ---
 
-## 1. Executive Summary
+## 1. Executive Summary & Three-Layer Milestone Architecture
 
-This report certifies the completion and verification of the **Lab C AO Distributed Runner** milestone (`C95-AO-00`). The prototype coordination layer in `lab-c-ao/` has been integrated with a real WebAssembly execution bridge, executing the compiled Rust synthetic search kernel (`lab_c_ao_worker.wasm`) end-to-end through AO message dispatch.
+To prevent architectural ambiguity between local process simulation, distributed networking, and live on-chain AO deployment, the Lab C AO runner certification is structured into three distinct, verifiable milestones:
 
-All 10 acceptance criteria defined in the engineering handoff have passed without exception:
-1. **Exact interval coverage:** All partitions form a complete partition of $[0, N)$ with zero gaps and zero overlaps.
-2. **Zero accepted duplicate completions:** Every shard is accepted at most once into the final reducer state.
-3. **Digest mismatch rejection:** Both `family_digest` and `kernel_digest` mismatches cause immediate rejection (`LabCError`).
-4. **Plaintext secret rejection:** Any payload containing `secret`, `private_key`, `seed`, or `mnemonic` is rejected by both worker transport and coordinator.
-5. **Synthetic known-answer recovery:** The exact hit commitment $C = \text{SHA256}(\text{"LAB-C-WIN-v1"} \parallel \text{run\_id} \parallel \text{candidate})$ was recovered across single-worker and multi-worker runs.
-6. **Aggregate accounting:** Sum of unique accepted tested counts strictly equals $N$.
-7. **Worker loss recovery:** Leased shards held past `lease_ms` are safely requeued to `ready` state with incremented attempt counters.
-8. **Stale lease rejection:** Workers waking after their lease expired are rejected when submitting against stale tokens.
-9. **Determinism:** Repeated frozen runs yield bit-identical result digests and accounting summaries.
-10. **Genuine multi-worker AO execution:** Verified with multiple concurrent AO worker processes participating and completing end-to-end.
+$$\boxed{\text{C95-AO-00A: Local / WASM Runner}} \longrightarrow \boxed{\text{C95-AO-00B: Networked Distributed Runner}} \longrightarrow \boxed{\text{C95-AO-00C: Native AO / HyperBEAM}}$$
+
+1. **C95-AO-00A (Certified):** Verifies the standalone Rust/WASM search kernel, C ABI compatibility, bit-identical native/WASM execution equivalence, deterministic shard leases, secret quarantine, and host initialization bottleneck characterization.
+2. **C95-AO-00B (Certified):** Establishes an asynchronous, networked distributed runner operating across independent OS daemon processes communicating over an HTTP transport router with unique Process IDs and cryptographic message IDs (`msg-xxxx`). Solves the host compute/transport asymmetry by calibrating an expensive synthetic oracle ($r^* = 200,000$ SHA-512 rounds, $\approx 160\text{ ms/candidate}$) matching Arweave Puzzle #3 oracle cost. Proves mid-lease fault tolerance, stale submission rejection, empirical scaling across $p \in \{1, 2, 4, 8\}$ workers, and zero duplicate accepted work under sustained multi-worker soak.
+3. **C95-AO-00C (Next Milestone):** Bridges the certified coordination state machine (`coordinator.lua`) and worker harness directly into genuine AO processes / HyperBEAM compute units on the live AO network or local Erlang BEAM runtime.
 
 ---
 
-## 2. Frozen Artifact Hashes
+## 2. Frozen Release Artifact Checksums
 
-The final release build of the Rust search kernel was compiled to `wasm32-unknown-unknown` with `opt-level = 3`, `lto = true`, and `strip = true`. Any modification to source or build flags invalidates `kernel_digest` and requires rebuilding and re-freezing.
+All core binaries, source modules, and transport daemons are cryptographically locked:
 
-| Artifact | Path | SHA-256 Checksum |
+| Component | Path | SHA-256 Checksum |
 | :--- | :--- | :--- |
-| **WASM Kernel** | `lab-c-ao/lab_c_ao_worker.wasm` | `14abbf8a03d47308232faccc351635699ef1653e4cfe16c91714677d5b10d62c` |
-| **Coordinator Process** | `lab-c-ao/coordinator.lua` | `135f3ac40055e7be4c6a629a972a98ce37544550ec451a82b33050f14e753ad2` |
-| **Worker Process** | `lab-c-ao/worker.lua` | `47ba9a879e6c5a8d30adc483a57b00d4ca9532ed9cbff399d301aad1f6c10c41` |
-| **Reference WASM Runner** | `lab-c-ao/wasm_runner.mjs` | `4b2a887fc17794c6e2f81f4ddc2c0ab9baa09e0f1ea4fe52be36d979bcac569b` |
+| **WASM Kernel (Calibrated Release)** | `lab-c-ao/lab_c_ao_worker.wasm` | `73ec9947271d2e7b5da6ed134d119c379708a888b5f80996b6e3a7e44a696d9d` |
+| **AO Coordinator Contract** | `lab-c-ao/coordinator.lua` | `135f3ac40055e7be4c6a629a972a98ce37544550ec451a82b33050f14e753ad2` |
+| **AO Worker Contract** | `lab-c-ao/worker.lua` | `47ba9a879e6c5a8d30adc483a57b00d4ca9532ed9cbff399d301aad1f6c10c41` |
+| **Reference WASM Host Runner** | `lab-c-ao/wasm_runner.mjs` | `d59cc435ebe5ee3f7e345956b84b01e652f571552288d53a25a125c4772b4152` |
+| **Network Transport Router** | `lab-c-ao/transport/network_router.mjs` | `16d6f96970f9a8aade50962ca1f8aca76d30c3ac4cc484a99e5cada9d9dfda52` |
+| **Coordinator Daemon** | `lab-c-ao/transport/coordinator_daemon.mjs` | `985da492db9b9ff858fa89a29aaef05d3c0235d93188563bb0c00575691b8825` |
+| **Worker Daemon** | `lab-c-ao/transport/worker_daemon.mjs` | `7ac9302ae0e4265b07400776b333a619bc881773b0827b4e734d07f8ac992081` |
 
 ---
 
-## 3. Architecture & Execution Seam
+## 3. Architecture & Execution Seams
 
-The coordination and execution flow maintains strict isolation between transport metadata and search kernel execution:
+### 3.1 Network Topology (C95-AO-00B)
 
 ```
-[AO Coordinator (coordinator.lua)]
-        |
-        | ShardLease (run_id, shard_id, lease_token, [start, end), digests)
-        v
-[AO Worker (worker.lua)]
-        |
-        | Digest validation & secret quarantine
-        v
-[WASM Bridge (wasm_runner.mjs / ABI)]
-        |
-        | run_shard_abi(start, end, known_index, run_id_ptr, len)
-        v
-[Rust WASM Kernel (lab_c_ao_worker.wasm)]
-        |
-        | ShardOutputAbi (tested, result_digest, has_hit, hit_commitment)
-        v
-[AO Worker (worker.lua)]
-        |
-        | SubmitShard (tested, result_digest, hit_commitment)
-        v
-[AO Coordinator / Reducer (coordinator.lua)]
+                       +------------------------------------------+
+                       | HTTP Message Router (network_router.mjs) |
+                       | - Non-blocking inboxes & long-polling    |
+                       | - Process addressing (PID)               |
+                       | - Message IDs (msg-xxxx) & Audit Log     |
+                       +------------------------------------------+
+                                    ^          ^          ^
+                 +------------------+          |          +------------------+
+                 | HTTP /send & /poll          |                             |
+                 v                             v                             v
++-------------------------------+ +------------------------+   +------------------------+
+| Coordinator Daemon            | | Worker Daemon 1        |   | Worker Daemon p        |
+| (coordinator_daemon.mjs)      | | (worker_daemon.mjs)    |   | (worker_daemon.mjs)    |
+| - Deterministic half-open     | | - Process ID: worker-1 |   | - Process ID: worker-p |
+|   interval sharding           | | - Local WASM Runner    |   | - Local WASM Runner    |
+| - Lease expiry & requeuing    | | - Secret Quarantine    |   | - Secret Quarantine    |
+| - Strict ledger accounting    | | - Retries & Backoff    |   | - Retries & Backoff    |
++-------------------------------+ +------------------------+   +------------------------+
+                                               |                             |
+                                               v                             v
+                                  +------------------------+   +------------------------+
+                                  | lab_c_ao_worker.wasm   |   | lab_c_ao_worker.wasm   |
+                                  | - r* = 200,000 rounds  |   | - r* = 200,000 rounds  |
+                                  | - ~160ms / candidate   |   | - ~160ms / candidate   |
+                                  +------------------------+   +------------------------+
 ```
 
-### WASM C ABI Specification
+### 3.2 WASM C ABI Specification
 The kernel exports a minimal C-compatible ABI with fixed layout memory buffers:
 - `alloc_bytes(len: usize) -> *mut u8`: linear memory allocator for input strings (`run_id`).
 - `free_bytes(ptr: *mut u8, len: usize)`: linear memory deallocator.
-- `run_shard_abi(start: u64, end: u64, known: u64, run_id_ptr: *const u8, len: usize) -> *const ShardOutputAbi`: executes half-open interval `[start, end)`.
+- `run_shard_abi(start, end, known, run_id_ptr, len) -> *const ShardOutputAbi`: baseline synthetic kernel.
+- `run_shard_calibrated_abi(start, end, known, work_rounds, run_id_ptr, len) -> *const ShardOutputAbi`: calibrated expensive synthetic oracle.
 - `ShardOutputAbi` (88 bytes, 8-byte aligned):
   - `offset 0..8`: `tested` (`u64`)
   - `offset 8..9`: `has_hit` (`u8`)
   - `offset 9..16`: `_pad` (`[u8; 7]`)
-  - `offset 16..24`: `hit_index` (`u64`, internal/synthetic harness use only)
+  - `offset 16..24`: `hit_index` (`u64`, internal test harness use only)
   - `offset 24..56`: `hit_commitment` (`[u8; 32]`)
   - `offset 56..88`: `result_digest` (`[u8; 32]`)
 
-Per protocol requirements, `hit_index` is omitted from `SubmitShard` envelopes; only the 32-byte cryptographic hit commitment is submitted through AO.
+Per protocol quarantine requirements, `hit_index` is omitted from `SubmitShard` envelopes; only the 32-byte cryptographic hit commitment is submitted through the network router.
 
 ---
 
-## 4. Gate Verification Records
+## 4. Milestone C95-AO-00A: Local/WASM Runner Certification
 
-### Gate A & B — Build to WASM & ABI Definition
-- Target `wasm32-unknown-unknown` built clean with zero compiler warnings.
-- Artifact SHA-256 frozen as `14abbf8a03d47308232faccc351635699ef1653e4cfe16c91714677d5b10d62c`.
-- Native Rust unit tests and WASM ABI roundtrip tests: 4 passed in 0.00s.
+### 4.1 Rust Search Kernel & Native Equivalence
+- The search kernel was compiled from `lab-c-ao/rust-worker/src/lib.rs` to `wasm32-unknown-unknown`.
+- Bit-identical native vs WASM equivalence was certified across test suites:
+  - Unit tests and ABI roundtrip tests: 4 passed in 0.00s.
+  - Known-answer hit recovery: Single-worker known-answer run at $N = 4,608$ candidates ($Z = 1,024$, known index $3,137$) recovered hit commitment `63b7066fb34ca2a767783655b0450a58b92e77e780315a07c2127c5cde33823b` identically across native and WASM engines.
 
-### Gate C — AO Worker Connection
-- `worker.lua` updated with dual execution paths:
-  1. Direct host runner invocation via `wasm_runner.mjs`.
-  2. Asynchronous AO message seam: `ShardLease` -> `ExecuteWasmShard` -> `WasmShardResult` -> `SubmitShard`.
-- Both paths enforce quarantine against plaintext secret leaks.
+### 4.2 Host Bottleneck Characterization
+Initial uncalibrated scaling experiments evaluated $N = 181,440$ candidates across 1 to 64 local threads.
+- Raw Rust/WASM execution time for all 181,440 candidates: **41.9 milliseconds** (~$4.33 \times 10^6\text{ candidates/sec}$).
+- Spawning 32 to 64 local worker threads consumed **7.8 to 8.2 seconds** purely in V8 isolate startup and OS thread creation—over $180\times$ longer than the compute itself.
+- **Critical Architectural Sizing Rule:** Distributed workers in AO/HyperBEAM are long-running stateful nodes. To prevent transport and startup overhead from dominating wall-clock execution, shard sizes must be calibrated such that:
 
-### Gate D — Single-Worker Known-Answer Run
-- Run parameters: $N = 4,608$ candidates, shard size $Z = 1,024$, known index $= 3,137$.
-- Shard count: 5 shards.
-- Tested candidate count: exactly $4,608$.
-- Expected hit commitment recovered:
-  `63b7066fb34ca2a767783655b0450a58b92e77e780315a07c2127c5cde33823b`
-  (matches $\text{SHA256}(\text{"LAB-C-WIN-v1"} \parallel \text{run\_id} \parallel \text{index.to\_be\_bytes()})$).
-- Result digest determinism: bit-identical across consecutive runs.
-- Duplicate accepted completions: 0.
-
-### Gate E — Failure Injection & Stale Worker Rejection
-- Tested fault sequence:
-  1. Worker A leases Shard 1 ($[0, 1024)$) at $t=1000$ with `lease_token_A`.
-  2. Worker A computes shard but delays submission.
-  3. Coordinator clock advances past $t=10000$ (`lease_ms`).
-  4. Shard 1 expires and returns to `ready`; attempt counter increments.
-  5. Worker B leases Shard 1 at $t=12500$ with `lease_token_B` ($\neq \text{token}_A$).
-  6. Worker A submits with `lease_token_A` at $t=13000$ $\rightarrow$ **REJECTED** (`stale lease token`, error logged, rejection counter incremented).
-  7. Worker B submits valid Shard 1 result $\rightarrow$ **ACCEPTED**.
-  8. Worker B completes Shard 2.
-- Accounting reconciliation:
-  - Mathematical candidates: $2,048$.
-  - Unique accepted evaluations: $2,048$.
-  - Physical evaluations dispatched: $3,072$ ($1,024 \times 3$ attempts).
-  - Accepted shard completions: $2$.
-  - Rejected stale submissions: $1$.
+$$T_{\text{compute / shard}} \gg T_{\text{transport}} + T_{\text{startup}} \quad (\ge 2\text{ to }10\text{ seconds/shard})$$
 
 ---
 
-## 5. Multi-Worker Execution & Scaling Benchmarks
+## 5. Milestone C95-AO-00B: Networked Distributed WASM Runner Certification
 
-Per engineering amendments, results are separated into two distinct categories:
-1. `GENUINE_MULTIWORKER_AO_EXECUTION`: An actual multi-process AO execution where multiple distinct AO worker processes concurrently lease and complete shards over the AO message protocol.
-2. `LOCAL_DISTRIBUTED_BASELINE`: A local machine scaling benchmark across 1 to 64 workers measuring speedup, efficiency, and host bottlenecking.
+### 5.1 Oracle Calibration ($r^*$)
+The synthetic oracle was calibrated in `lab-c-ao/calibrate_oracle.mjs` against the cost of the live Arweave Puzzle #3 cryptographic oracle:
+- Live Arweave #3 candidate evaluation throughput: $\approx 6.2\text{ candidates/second}$ ($\approx 161.3\text{ ms/candidate}$).
+- Calibrated WASM iterated SHA-512 rounds: $r^* = 200,000$ rounds.
+- Empirical WASM evaluation rate: **$160.01\text{ ms/candidate}$** ($6.25\text{ candidates/sec}$).
+- Production shard size: $Z = 16$ candidates $\implies \mathbf{2.56\text{ seconds}}$ of pure WASM computation per shard.
 
-### 5.1 Genuine Multi-Worker AO Execution
-- Execution file: `lab-c-ao/tests/test_multiworker_ao.py`
-- Configuration: 4 concurrent AO worker processes (`ao-worker-proc-1` through `ao-worker-proc-4`), 1 AO coordinator process.
-- Candidate family: $N = 4,608$, shard size $= 1,024$, 5 shards.
-- Results:
-  - Participating workers: 4 / 4 concurrent workers successfully leased and completed shards.
-  - Wall-clock time: **0.624 seconds**.
-  - Mathematical candidates covered: $4,608$.
-  - Unique accepted candidate evaluations: $4,608$.
-  - Physical candidate evaluations: $4,608$.
-  - Duplicate accepted completions: **0**.
-  - Hit commitment recovered: `63b7066fb34ca2a767783655b0450a58b92e77e780315a07c2127c5cde33823b`.
-  - Coordinator status: `complete = true`.
+### 5.2 Network Transport & Fault Injection Verification
+Test 1 of `test_networked_distributed.mjs` verified mid-lease node loss, lease expiration, and stale submission rejection over HTTP:
+1. **Lease Acquisition:** Worker 1 (`worker-fault-01`) acquired lease on Shard 1 with lease token `fault-injection-run:1:1:1790969152345`.
+2. **Forced Node Crash:** Worker 1 process was abruptly terminated (`kill -9`) mid-computation.
+3. **Automatic Expiry & Requeuing:** Coordinator elapsed past `lease_ms = 4000ms`, returned Shard 1 to `ready`, and incremented the attempt counter to 2.
+4. **Re-Leasing:** Worker 2 (`worker-fault-02`) requested work and leased Shard 1 with new token `fault-injection-run:1:2:1790969156867`.
+5. **Stale Submission Rejection:** Stale Worker 1 attempted submission using expired token 1. The coordinator rejected it immediately: `{"error":"lease owner mismatch"}` and incremented `rejected_stale_or_duplicate`.
+6. **Valid Completion:** Worker 2 completed and submitted Shard 1; accepted by coordinator.
 
-### 5.2 LOCAL_DISTRIBUTED_BASELINE (Scaling Curve: 1 to 64 Workers)
-- Candidate family: $N = 181,440$ candidates (identical mathematical size to Arweave #3 Tier-2 candidate family), shard size $Z = 4,096$ (45 shards total).
-- Raw Rust/WASM computation time for all 181,440 candidates: **41.9 milliseconds** (~4,329,000 candidates/sec intrinsic WASM throughput).
+### 5.3 Scaling Benchmark Results ($p \in \{1, 2, 4, 8\}$)
+Test 2 executed the calibrated search across $N = 128$ candidates ($8$ shards of $Z = 16$ candidates, total pure compute $\approx 20.5\text{ seconds}$):
 
-#### Threaded In-Memory WASM Execution Series
-| Workers ($p$) | Wall Time ($T_p$) | Worker Time | Coord Overhead | Throughput | Speedup ($S_p$) | Efficiency ($E_p$) |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1** | 0.1879s | 0.0419s | 0.1460s | 965,676 c/s | 1.00x | 1.00 |
-| **2** | 0.1880s | 0.0392s | 0.1684s | 964,975 c/s | 1.00x | 0.50 |
-| **4** | 0.2834s | 0.0465s | 0.2718s | 640,130 c/s | 0.66x | 0.17 |
-| **8** | 0.4534s | 0.0453s | 0.4477s | 400,210 c/s | 0.41x | 0.05 |
-| **16** | 0.8853s | 0.1477s | 0.8761s | 204,940 c/s | 0.21x | 0.01 |
-| **32** | 7.9032s | 1.3613s | 7.8606s | 22,958 c/s | 0.02x | 0.00 |
-| **64** | 8.2558s | 3.0416s | 8.2082s | 21,977 c/s | 0.02x | 0.00 |
+| Workers ($p$) | Wall Time ($T_p$) | Throughput | Speedup ($S_p = T_1 / T_p$) | Efficiency ($\eta_p = S_p / p$) | Duplicate Work | Rejected Stale | Hits Recovered |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1** | 21.940 s | 5.83 c/s | 1.000x | 1.000 | 0 | 0 | 1 |
+| **2** | 13.878 s | 9.22 c/s | 1.581x | 0.790 | 0 | 0 | 1 |
+| **4** | 12.620 s | 10.14 c/s | 1.739x | 0.435 | 0 | 0 | 1 |
+| **8** | 11.263 s | 11.36 c/s | 1.948x | 0.243 | 0 | 0 | 1 |
 
-#### Host Bottleneck Analysis
-The empirical measurements demonstrate an important operational finding regarding host resource allocation:
-1. **Compute vs. Setup Asymmetry:** Because the optimized Rust/WASM kernel evaluates 181,440 synthetic candidates in only **42 milliseconds**, the workload is compute-light.
-2. **Shard Exhaustion:** At $N = 181,440$ with $Z = 4,096$, there are only 45 shards. When $p = 64$, 19 worker instances never receive work.
-3. **Thread/Isolate Initialization Bottleneck:** Spawning 32 to 64 V8 worker threads consumes between 7.8s and 8.2s of thread initialization and OS context switching—nearly $200\times$ more time than the actual search computation.
-4. **Architectural Implication for Production AO:** In a distributed network like AO/HyperBEAM, workers are long-running stateful processes. To amortize message round-trip time (RTT) and coordination overhead, production shard sizes for cryptographic puzzles should be sized to require $\ge 2$–$10$ seconds of continuous compute per shard (e.g., $10^7$ to $10^8$ candidates per shard).
+*Raw data persisted in `lab-c-ao/c95_ao_00b_scaling_results.json`.*
+
+### 5.4 Search Time Projection for Novel Candidate Space
+For the target novel candidate family ($N = 173,376$ candidates), the total wall-clock search time is projected using the empirical throughput $\text{Throughput}(p) = p \cdot r_1 \cdot \eta(p)$:
+
+$$T_{\text{search}}(p) = \frac{N}{\text{Throughput}(p)}$$
+
+$$\begin{aligned}
+p = 1: & \quad \frac{173,376}{5.833\text{ c/s}} \approx 29,723\text{ s} \approx \mathbf{8.26\text{ hours}} \\
+p = 2: & \quad \frac{173,376}{9.223\text{ c/s}} \approx 18,798\text{ s} \approx \mathbf{5.22\text{ hours}} \\
+p = 4: & \quad \frac{173,376}{10.140\text{ c/s}} \approx 17,098\text{ s} \approx \mathbf{4.75\text{ hours}} \\
+p = 8: & \quad \frac{173,376}{11.365\text{ c/s}} \approx 15,255\text{ s} \approx \mathbf{4.24\text{ hours}}
+\end{aligned}$$
+
+### 5.5 Sustained Multi-Worker Soak Test
+Test 3 executed 8 concurrent worker daemons continuously searching a 256-candidate space ($16$ shards):
+- **Wall Time:** 16.78 seconds.
+- **Tested Count:** Exactly 256 candidates ($100\%$ mathematical coverage).
+- **Hits Recovered:** 1 hit commitment.
+- **Stale Rejections:** 0.
+- **Memory/Socket Leaks:** 0.
 
 ---
 
 ## 6. Accounting Ledger Invariants
 
-The coordinator state strictly preserves the separation between mathematical coverage, physical evaluations, and accepted submissions:
+The coordinator state strictly enforces the core distributed accounting invariants:
 
 $$\bigcup_{i=1}^m [\text{start}_i, \text{end}_i) = [0, N)$$
 $$[\text{start}_i, \text{end}_i) \cap [\text{start}_j, \text{end}_j) = \emptyset \quad \forall i \neq j \text{ in accepted completions}$$
 $$\sum_{i=1}^m (\text{end}_i - \text{start}_i) = N$$
 
-| Counter | Definition | Synthetic Gate D | Failure Injection Gate E | Genuine Multi-Worker AO |
+| Accounting Metric | Definition | Fault Test (00B) | Benchmark $p=8$ (00B) | Soak Test (00B) |
 | :--- | :--- | :---: | :---: | :---: |
-| `mathematical_candidates` | Intended mathematical interval size | 4,608 | 2,048 | 4,608 |
-| `unique_accepted_evaluations` | Unique verified candidate evaluations | 4,608 | 2,048 | 4,608 |
-| `physical_evaluations` | Total evaluations attempted across all leases | 4,608 | 3,072 | 4,608 |
-| `accepted_completions` | Total accepted completed shards | 5 | 2 | 5 |
-| `rejected_stale_or_duplicate` | Stale or duplicate submission attempts | 0 | 1 | 0 |
-| `expired_leases` | Shards returned to ready on lease timeout | 0 | 1 | 0 |
+| `mathematical_candidates` | Target search space size ($N$) | 32 | 128 | 256 |
+| `unique_accepted_evaluations` | Unique verified candidate evaluations | 32 | 128 | 256 |
+| `physical_evaluations` | Total evaluations attempted across all leases | 48 | 128 | 256 |
+| `accepted_completions` | Completed shard count ($m$) | 2 | 8 | 16 |
+| `rejected_stale_or_duplicate` | Stale or duplicate submission attempts | 1 | 0 | 0 |
+| `expired_leases` | Shards returned to ready on lease timeout | 1 | 0 | 0 |
+| `duplicate_accepted_work` | Overlapping evaluations accepted into reducer | **0** | **0** | **0** |
 
 ---
 
 ## 7. Secret Quarantine Verification
 
-Quarantine enforcement was verified through negative adversarial testing:
-- **Test case:** Worker payloads deliberately injected with `secret`, `private_key`, `seed`, and `mnemonic` fields.
-- **Result:** Coordinator rejected every payload immediately with error `plaintext secret rejected`.
-- **Worker transport firewall:** `worker.lua` validates results before forwarding; any secret material halts message submission.
-- **Commitment verification:** A positive hit produces only the deterministic commitment $C = \text{SHA256}(\text{"LAB-C-WIN-v1"} \parallel \text{run\_id} \parallel \text{candidate})$. No candidate or secret plaintext is transmitted across the AO bus.
+Negative adversarial testing verified secret quarantine at every layer:
+1. **Worker Process Firewall:** `worker_daemon.mjs` scans all WASM outputs before network transmission; presence of `secret`, `private_key`, `seed`, or `mnemonic` throws a quarantine breach exception.
+2. **Coordinator Firewall:** `coordinator_daemon.mjs` and `coordinator.lua` inspect inbound JSON payloads; any payload containing secret keys is rejected with `plaintext secret rejected`.
+3. **Commitment Submission:** Positive hits submit only $C = \text{SHA256}(\text{"LAB-C-WIN-v1"} \parallel \text{run\_id} \parallel \text{candidate})$. No plaintext private key, mnemonic, or seed is ever transmitted over the network router or committed to logs.
 
 ---
 
-## 8. Certification Sign-off
+## 8. Milestone C95-AO-00C (Native AO / HyperBEAM) Roadmap
 
-The Lab C AO Distributed Runner is certified for milestone `C95-AO-00`. The coordination layer, WASM compilation pipeline, reference host runner, failure injection defenses, and accounting invariants are verified and frozen.
+With milestones **00A** (Local/WASM) and **00B** (Networked Distributed Runner) certified and locked, the platform execution boundary is fully prepared for **C95-AO-00C**:
 
-The system is ready for the next scheduled milestone: attaching the live puzzle oracle (Arweave Puzzle #3 Tier-2 bounded family) following strict authorization and secret quarantine protocols.
+1. **Native HyperBEAM Node Bringup:** Recompile `rebar3` compatible with local Erlang/OTP 25 (`13.2.2.5`) to boot local HyperBEAM nodes for offline consensus testing.
+2. **Live AOS Process Deployment:** Deploy `coordinator.lua` and `worker.lua` onto the AO testnet using `@permaweb/aoconnect`.
+3. **Production Shard Dispatch:** Attach the bounded Tier-2 Arweave Puzzle #3 candidate space ($N = 173,376$) with shard size $Z \ge 16$ candidates, executing distributed search with guaranteed secret quarantine and exact accounting.

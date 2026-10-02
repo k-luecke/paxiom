@@ -1,0 +1,50 @@
+[
+  {
+    "workers": 1,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 21.94,
+    "throughput_c_per_s": 5.83,
+    "speedup": 1,
+    "efficiency": 1,
+    "duplicate_accepted_work": 0,
+    "rejected_stale_or_duplicate": 0,
+    "hit_count": 1
+  },
+  {
+    "workers": 2,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 13.878,
+    "throughput_c_per_s": 9.22,
+    "speedup": 1.581,
+    "efficiency": 0.79,
+    "duplicate_accepted_work": 0,
+    "rejected_stale_or_duplicate": 0,
+    "hit_count": 1
+  },
+  {
+    "workers": 4,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 12.62,
+    "throughput_c_per_s": 10.14,
+    "speedup": 1.739,
+    "efficiency": 0.435,
+    "duplicate_accepted_work": 0,
+    "rejected_stale_or_duplicate": 0,
+    "hit_count": 1
+  },
+  {
+    "workers": 8,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 11.263,
+    "throughput_c_per_s": 11.36,
+    "speedup": 1.948,
+    "efficiency": 0.243,
+    "duplicate_accepted_work": 0,
+    "rejected_stale_or_duplicate": 0,
+    "hit_count": 1
+  }
+]

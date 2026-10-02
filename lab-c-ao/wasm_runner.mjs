@@ -21,12 +21,13 @@ export async function createWasmRunner(wasmPath = path.join(__dirname, 'lab_c_ao
   const wasmBuffer = fs.readFileSync(wasmPath);
   const wasmModule = await WebAssembly.compile(wasmBuffer);
 
-  return async function executeShard(start, end, knownIndex, runId) {
+  return async function executeShard(start, end, knownIndex, runId, workRounds = 0) {
     const instance = await WebAssembly.instantiate(wasmModule, {});
     const {
       memory,
       alloc_bytes,
       free_bytes,
+      run_shard_calibrated_abi,
       run_shard_abi,
     } = instance.exports;
 
@@ -41,16 +42,13 @@ export async function createWasmRunner(wasmPath = path.join(__dirname, 'lab_c_ao
     const startBig = BigInt(start);
     const endBig = BigInt(end);
     const knownBig = BigInt(knownIndex);
+    const rounds = Number(workRounds) || 0;
 
-    const outPtr = run_shard_abi(startBig, endBig, knownBig, runIdPtr, runIdBytes.length);
+    const fn = run_shard_calibrated_abi || run_shard_abi;
+    const outPtr = run_shard_calibrated_abi
+      ? run_shard_calibrated_abi(startBig, endBig, knownBig, rounds, runIdPtr, runIdBytes.length)
+      : run_shard_abi(startBig, endBig, knownBig, runIdPtr, runIdBytes.length);
 
-    // Read ShardOutputAbi from outPtr:
-    // offset 0: u64 tested (8 bytes)
-    // offset 8: u8 has_hit (1 byte)
-    // offset 9..15: pad (7 bytes)
-    // offset 16: u64 hit_index (8 bytes)
-    // offset 24: [u8; 32] hit_commitment (32 bytes)
-    // offset 56: [u8; 32] result_digest (32 bytes)
     const memBuffer = memory.buffer;
     const dataView = new DataView(memBuffer, outPtr, 88);
 
@@ -78,18 +76,18 @@ export async function createWasmRunner(wasmPath = path.join(__dirname, 'lab_c_ao
   };
 }
 
-// CLI usage: node wasm_runner.mjs <start> <end> <known_index> <run_id> [wasm_path]
+// CLI usage: node wasm_runner.mjs <start> <end> <known_index> <run_id> [work_rounds] [wasm_path]
 if (process.argv[1] && process.argv[1].endsWith('wasm_runner.mjs')) {
   const args = process.argv.slice(2);
   if (args.length < 4) {
-    console.error('Usage: wasm_runner.mjs <start> <end> <known_index> <run_id> [wasm_path]');
+    console.error('Usage: wasm_runner.mjs <start> <end> <known_index> <run_id> [work_rounds] [wasm_path]');
     process.exit(2);
   }
 
-  const [start, end, knownIndex, runId, wasmPath] = args;
+  const [start, end, knownIndex, runId, workRounds = 0, wasmPath] = args;
   try {
     const runner = await createWasmRunner(wasmPath);
-    const res = await runner(Number(start), Number(end), Number(knownIndex), runId);
+    const res = await runner(Number(start), Number(end), Number(knownIndex), runId, Number(workRounds));
     console.log(JSON.stringify(res));
   } catch (err) {
     console.error(err);

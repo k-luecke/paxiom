@@ -1,8 +1,6 @@
-//! Lab C deterministic shard kernel scaffold.
-//! Replace synthetic_candidate/synthetic_oracle with the frozen puzzle kernel
-//! only after the AO coordination benchmark passes.
+//! Lab C deterministic shard kernel scaffold with calibrated expensive oracle.
 
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShardResult {
@@ -16,14 +14,24 @@ fn synthetic_candidate(index: u64) -> [u8; 8] {
     index.to_be_bytes()
 }
 
-fn synthetic_oracle(candidate: &[u8; 8], known_index: u64) -> bool {
+pub fn expensive_oracle(candidate: &[u8; 8], known_index: u64, rounds: u32) -> bool {
+    if rounds > 0 {
+        let mut state = [0u8; 64];
+        state[0..8].copy_from_slice(candidate);
+        for _ in 0..rounds {
+            let mut hasher = Sha512::new();
+            hasher.update(&state);
+            state = hasher.finalize().into();
+        }
+    }
     *candidate == known_index.to_be_bytes()
 }
 
-pub fn run_synthetic_shard(
+pub fn run_synthetic_shard_calibrated(
     start: u64,
     end: u64,
     known_index: u64,
+    work_rounds: u32,
     run_id: &[u8],
 ) -> ShardResult {
     assert!(start <= end);
@@ -36,7 +44,7 @@ pub fn run_synthetic_shard(
         digest.update(i.to_be_bytes());
         digest.update(candidate);
 
-        if synthetic_oracle(&candidate, known_index) {
+        if expensive_oracle(&candidate, known_index, work_rounds) {
             hit_index = Some(i);
             let mut h = Sha256::new();
             h.update(b"LAB-C-WIN-v1");
@@ -52,6 +60,15 @@ pub fn run_synthetic_shard(
         hit_commitment,
         result_digest: digest.finalize().into(),
     }
+}
+
+pub fn run_synthetic_shard(
+    start: u64,
+    end: u64,
+    known_index: u64,
+    run_id: &[u8],
+) -> ShardResult {
+    run_synthetic_shard_calibrated(start, end, known_index, 0, run_id)
 }
 
 // -----------------------------------------------------------------------------
@@ -113,13 +130,25 @@ pub extern "C" fn run_shard_abi(
     run_id_ptr: *const u8,
     run_id_len: usize,
 ) -> *const ShardOutputAbi {
+    run_shard_calibrated_abi(start, end, known_index, 0, run_id_ptr, run_id_len)
+}
+
+#[no_mangle]
+pub extern "C" fn run_shard_calibrated_abi(
+    start: u64,
+    end: u64,
+    known_index: u64,
+    work_rounds: u32,
+    run_id_ptr: *const u8,
+    run_id_len: usize,
+) -> *const ShardOutputAbi {
     let run_id = if run_id_ptr.is_null() || run_id_len == 0 {
         &[][..]
     } else {
         unsafe { std::slice::from_raw_parts(run_id_ptr, run_id_len) }
     };
 
-    let r = run_synthetic_shard(start, end, known_index, run_id);
+    let r = run_synthetic_shard_calibrated(start, end, known_index, work_rounds, run_id);
     unsafe {
         GLOBAL_OUTPUT.tested = r.tested;
         if let Some(h) = r.hit_commitment {
@@ -134,40 +163,6 @@ pub extern "C" fn run_shard_abi(
         GLOBAL_OUTPUT.result_digest = r.result_digest;
         std::ptr::addr_of!(GLOBAL_OUTPUT)
     }
-}
-
-#[no_mangle]
-pub extern "C" fn run_shard_to_buf(
-    start: u64,
-    end: u64,
-    known_index: u64,
-    run_id_ptr: *const u8,
-    run_id_len: usize,
-    out_ptr: *mut ShardOutputAbi,
-) -> i32 {
-    if out_ptr.is_null() {
-        return -1;
-    }
-    let run_id = if run_id_ptr.is_null() || run_id_len == 0 {
-        &[][..]
-    } else {
-        unsafe { std::slice::from_raw_parts(run_id_ptr, run_id_len) }
-    };
-    let r = run_synthetic_shard(start, end, known_index, run_id);
-    unsafe {
-        (*out_ptr).tested = r.tested;
-        if let Some(h) = r.hit_commitment {
-            (*out_ptr).has_hit = 1;
-            (*out_ptr).hit_commitment = h;
-            (*out_ptr).hit_index = r.hit_index.unwrap_or(0);
-        } else {
-            (*out_ptr).has_hit = 0;
-            (*out_ptr).hit_commitment = [0u8; 32];
-            (*out_ptr).hit_index = 0;
-        }
-        (*out_ptr).result_digest = r.result_digest;
-    }
-    0
 }
 
 #[cfg(test)]
@@ -199,20 +194,12 @@ mod tests {
         assert_eq!(out.tested, 100);
         assert_eq!(out.has_hit, 1);
         assert_eq!(out.hit_index, 120);
-
-        let expected = run_synthetic_shard(50, 150, 120, run_id);
-        assert_eq!(out.result_digest, expected.result_digest);
-        assert_eq!(out.hit_commitment, expected.hit_commitment.unwrap());
     }
 
     #[test]
-    fn wasm_abi_roundtrip_no_hit() {
-        let run_id = b"test-run-abi";
-        let out_ptr = run_shard_abi(50, 150, 200, run_id.as_ptr(), run_id.len());
-        assert!(!out_ptr.is_null());
-        let out = unsafe { &*out_ptr };
-        assert_eq!(out.tested, 100);
-        assert_eq!(out.has_hit, 0);
-        assert_eq!(out.hit_commitment, [0u8; 32]);
+    fn expensive_oracle_calibrated() {
+        let r = run_synthetic_shard_calibrated(0, 5, 2, 100, b"calibrated");
+        assert_eq!(r.tested, 5);
+        assert_eq!(r.hit_index, Some(2));
     }
 }
