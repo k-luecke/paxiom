@@ -305,7 +305,7 @@ Negative adversarial verification passed across all three milestones:
 
 | Milestone | Scope | Status | Key Deliverable |
 | :--- | :--- | :---: | :--- |
-| **C95-AO-00A** | Local / WASM Runner | **CERTIFIED & FROZEN** | Calibrated Rust/WASM search kernel ($4.33\text{M c/s}$ raw, $r^* = 200,000$ rounds) |
+| **C95-AO-00A** | Local / WASM Runner | **CERTIFIED & FROZEN** | 4.33M c/s lightweight synthetic baseline; calibrated expensive oracle ($r^* = 200,000$) separately |
 | **C95-AO-00B** | Networked Distributed Runner | **CERTIFIED & FROZEN** | Asynchronous HTTP router, process IDs, fault injection, $N=128$ scaling |
 | **C95-AO-00C** | Native Local HyperBEAM | **CERTIFIED & FROZEN** | Live HyperBEAM node, RFC 8941 signatures, lifecycle curve, $2.84\times$ speedup ($17.16\text{ c/s}$) |
 | **C95-AO-00D** | External AO Distributed Compute | **SPECIFIED / NEXT** | Physically independent compute units, $1 \rightarrow 2 \rightarrow 4 \rightarrow 8$ scaling, economics target |
@@ -330,19 +330,32 @@ Where 00C proved that the native HyperBEAM runtime layer works on loopback (`127
 1. **Initial Two-Node Verification:**
    - Deploy worker daemons onto two physically independent machines / compute units.
    - Run a sufficient batch of shards such that cold-start noise ($< 11\text{ ms}$) is eliminated.
-   - **Hypothesis Test:** If two independent workers approach:
+   - **Hypothesis Test:**
+     $$\eta_2 = \frac{r_2}{2 r_1}$$
+     If two independent workers approach:
      $$2 \times 6.04\text{ c/s} \approx \mathbf{12.08\text{ candidates/sec}}$$
-     (compared to the local-host measured $8.61\text{ c/s}$ in 00C), this will provide direct empirical proof that local host resource contention was indeed suppressing 00C efficiency.
+     (compared to the local-host measured $8.61\text{ c/s}$ in 00C), this will provide direct empirical proof that local host resource contention was indeed suppressing 00C efficiency. If it remains around $8\text{--}9\text{ c/s}$, investigation turns immediately to a shared AO/runtime bottleneck.
 2. **External Scaling Progression ($1 \rightarrow 2 \rightarrow 4 \rightarrow 8$):**
    - Scale external compute units sequentially: $p \in \{1, 2, 4, 8\}$.
-   - Measure $T_{\rm wall}(p)$, throughput, speedup $S_p$, efficiency $\eta_p$, and monetary cost per 1,000 candidates evaluated.
+   - Evaluate throughput, speedup $S_p$, efficiency $\eta_p$, and wall-clock execution time.
 3. **Illustrative Benchmark Target:**
    - Assuming an external efficiency of $\approx 90\%$ across 8 independent workers:
      $$\text{Throughput}(8) = 8 \times 6.04\text{ c/s} \times 0.90 \approx \mathbf{43.5\text{ candidates/sec}}$$
    - At this target rate, the search time for the novel $173,376$-candidate family would fall to:
      $$T_{\rm search} = \frac{173,376}{43.5\text{ c/s}} \approx 3,985\text{ s} \approx \mathbf{66.4\text{ minutes}}$$
    - This serves as an unambiguous benchmark target to hit or disprove experimentally.
-4. **Economics & Policy Determination:**
-   - Establish network fee economics (cost per compute unit / transaction).
-   - Determine optimal shard size policy $Z$ and worker pool cardinality before attaching real puzzle candidates.
+
+### 12.4 Economics Reporting Schema
+Every performance result in Milestone 00D must pair scaling performance with an explicit economics accounting vector:
+
+$$\boxed{(\text{workers}, \text{throughput}, \eta, \text{wall time}, \text{AO cost}, \text{cost/}10^3\text{ candidates})}$$
+
+| Workers ($p$) | Throughput ($r_p$) | Efficiency ($\eta_p = \frac{r_p}{p \cdot r_1}$) | Wall Time ($T_p$) | Total AO Cost | Cost / $10^3$ Candidates | Scaling vs. Economics Verdict |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **1** | $r_1$ | $1.000$ | $T_1$ | $C_1$ | $C_1 / (N/1000)$ | Baseline external compute unit |
+| **2** | $r_2$ | $\frac{r_2}{2 r_1}$ | $T_2$ | $C_2$ | $C_2 / (N/1000)$ | Two-node independence test |
+| **4** | $r_4$ | $\frac{r_4}{4 r_1}$ | $T_4$ | $C_4$ | $C_4 / (N/1000)$ | Moderate distributed scaling |
+| **8** | $r_8$ | $\frac{r_8}{8 r_1}$ | $T_8$ | $C_8$ | $C_8 / (N/1000)$ | Primary target ($43.5\text{ c/s}$, $\approx 66\text{m}$) |
+
+This schema cleanly distinguishes near-zero marginal cost scaling on decentralized AO compute from linear cloud-compute rental costs.
 
