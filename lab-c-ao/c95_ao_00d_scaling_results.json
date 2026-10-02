@@ -1,0 +1,160 @@
+[
+  {
+    "workers": 1,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 21.963,
+    "throughput_c_per_s": 5.83,
+    "gateways_used": [
+      "https://arweave.net"
+    ],
+    "worker_results": [
+      {
+        "workerId": "worker-00d-p1-1",
+        "gateway": "https://arweave.net",
+        "process_id": "worker-00d-p1-1",
+        "shards_completed": 8,
+        "total_compute_ms": 20985.9531690008
+      }
+    ],
+    "accounting": {
+      "mathematical_candidates": 128,
+      "unique_accepted_evaluations": 128,
+      "physical_evaluations": 128,
+      "accepted_completions": 8,
+      "rejected_stale_or_duplicate": 0,
+      "duplicate_accepted_work": 0,
+      "hit_count": 1
+    },
+    "speedup": 1,
+    "efficiency": 1,
+    "economics": {
+      "ao_cost_usd": 0,
+      "cost_per_1k_candidates_usd": 0,
+      "economics_tuple": [
+        1,
+        5.83,
+        1,
+        21.963,
+        "$0.0000",
+        "$0.0000"
+      ]
+    }
+  },
+  {
+    "workers": 2,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 14.993,
+    "throughput_c_per_s": 8.54,
+    "gateways_used": [
+      "https://arweave.net",
+      "https://vevivo.art"
+    ],
+    "worker_results": [
+      {
+        "workerId": "worker-00d-p2-1",
+        "gateway": "https://arweave.net",
+        "process_id": "worker-00d-p2-1",
+        "shards_completed": 4,
+        "total_compute_ms": 14003.575672999956
+      },
+      {
+        "workerId": "worker-00d-p2-2",
+        "gateway": "https://vevivo.art",
+        "process_id": "worker-00d-p2-2",
+        "shards_completed": 4,
+        "total_compute_ms": 13015.49334400054
+      }
+    ],
+    "accounting": {
+      "mathematical_candidates": 128,
+      "unique_accepted_evaluations": 128,
+      "physical_evaluations": 128,
+      "accepted_completions": 8,
+      "rejected_stale_or_duplicate": 0,
+      "duplicate_accepted_work": 0,
+      "hit_count": 1
+    },
+    "speedup": 1.465,
+    "efficiency": 0.733,
+    "economics": {
+      "ao_cost_usd": 0,
+      "cost_per_1k_candidates_usd": 0,
+      "economics_tuple": [
+        2,
+        8.54,
+        0.733,
+        14.993,
+        "$0.0000",
+        "$0.0000"
+      ]
+    }
+  },
+  {
+    "workers": 4,
+    "candidate_count": 128,
+    "shard_size": 16,
+    "wall_seconds": 12.564,
+    "throughput_c_per_s": 10.19,
+    "gateways_used": [
+      "https://arweave.net",
+      "https://ar.mrx.im",
+      "https://vevivo.art",
+      "https://frostor.xyz"
+    ],
+    "worker_results": [
+      {
+        "workerId": "worker-00d-p4-1",
+        "gateway": "https://arweave.net",
+        "process_id": "worker-00d-p4-1",
+        "shards_completed": 2,
+        "total_compute_ms": 11055.464497000445
+      },
+      {
+        "workerId": "worker-00d-p4-2",
+        "gateway": "https://vevivo.art",
+        "process_id": "worker-00d-p4-2",
+        "shards_completed": 2,
+        "total_compute_ms": 8627.629891999532
+      },
+      {
+        "workerId": "worker-00d-p4-3",
+        "gateway": "https://ar.mrx.im",
+        "process_id": "worker-00d-p4-3",
+        "shards_completed": 2,
+        "total_compute_ms": 10957.526914000046
+      },
+      {
+        "workerId": "worker-00d-p4-4",
+        "gateway": "https://frostor.xyz",
+        "process_id": "worker-00d-p4-4",
+        "shards_completed": 2,
+        "total_compute_ms": 9392.867281999439
+      }
+    ],
+    "accounting": {
+      "mathematical_candidates": 128,
+      "unique_accepted_evaluations": 128,
+      "physical_evaluations": 128,
+      "accepted_completions": 8,
+      "rejected_stale_or_duplicate": 0,
+      "duplicate_accepted_work": 0,
+      "hit_count": 1
+    },
+    "speedup": 1.748,
+    "efficiency": 0.437,
+    "economics": {
+      "ao_cost_usd": 0,
+      "cost_per_1k_candidates_usd": 0,
+      "economics_tuple": [
+        4,
+        10.19,
+        0.437,
+        12.564,
+        "$0.0000",
+        "$0.0000"
+      ]
+    }
+  }
+]

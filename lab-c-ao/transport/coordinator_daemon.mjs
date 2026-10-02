@@ -89,6 +89,16 @@ function summarize(run) {
     physical_evaluations: run.physical_evaluations || 0,
     accepted_completions: done,
     rejected_stale_or_duplicate: run.rejected_stale_or_duplicate || 0,
+    gateways_used: Array.from(new Set(run.shards.map((s) => s.gateway).filter(Boolean))),
+    shard_details: run.shards.map((s) => ({
+      shard_id: s.shard_id,
+      start_index: s.start_index,
+      end_index: s.end_index,
+      status: s.status,
+      completed_by: s.completed_by || null,
+      gateway: s.gateway || null,
+      gateway_status: s.gateway_status || null,
+    })),
   };
 }
 
@@ -202,6 +212,9 @@ function handleMessage(msg) {
 
     s.status = 'done';
     s.result_digest = data.result_digest;
+    s.completed_by = from;
+    s.gateway = data.gateway || null;
+    s.gateway_status = data.gateway_status || null;
     s.worker = null;
     s.lease_expires_ms = null;
     s.lease_token = null;

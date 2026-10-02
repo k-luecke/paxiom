@@ -1,14 +1,16 @@
 /**
- * Standalone Worker Daemon for Networked Distributed WASM Runner (C95-AO-00B).
+ * Standalone Worker Daemon for Networked Distributed WASM Runner (C95-AO-00B / C95-AO-00D).
  *
  * Runs as an independent OS process with a unique Process ID.
- * Communicates with the Coordinator over the HTTP Router.
+ * Communicates with the Coordinator over the HTTP Router or HyperBEAM.
+ * Binds to an assigned independent AR.IO decentralized gateway from the pool.
  * Executes the compiled Rust/WASM search kernel with calibrated expensive oracle rounds.
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWasmRunner } from '../wasm_runner.mjs';
+import { getGatewayForWorker } from './gateway_pool.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROUTER_URL = process.env.ROUTER_URL || 'http://127.0.0.1:8765';
@@ -18,6 +20,7 @@ const RUN_ID = process.env.RUN_ID || 'test-run';
 const WORK_ROUNDS = Number(process.env.WORK_ROUNDS || 200000);
 const KNOWN_INDEX = Number(process.env.KNOWN_INDEX || -1);
 const WASM_PATH = process.env.WASM_PATH || path.join(__dirname, '..', 'lab_c_ao_worker.wasm');
+const GATEWAY_URL = process.env.GATEWAY_URL || getGatewayForWorker(PROCESS_ID);
 
 async function postSend(target, action, data, retries = 5) {
   const payload = {
@@ -57,14 +60,32 @@ async function pollNextMessage() {
   }
 }
 
+async function verifyGatewayHealth(gwUrl) {
+  try {
+    const t0 = performance.now();
+    const res = await fetch(`${gwUrl}/info`, { signal: AbortSignal.timeout(3000) });
+    const ms = (performance.now() - t0).toFixed(1);
+    if (res.ok) {
+      return { ok: true, ms };
+    }
+  } catch (err) {}
+  return { ok: false };
+}
+
 async function main() {
   const runner = await createWasmRunner(WASM_PATH);
   let completedShards = 0;
   let totalComputeMs = 0;
 
+  // Verify assigned AR.IO gateway
+  const gwHealth = await verifyGatewayHealth(GATEWAY_URL);
+
   while (true) {
     // 1. Request lease from coordinator
-    await postSend(COORDINATOR_ID, 'LeaseShard', { run_id: RUN_ID });
+    await postSend(COORDINATOR_ID, 'LeaseShard', {
+      run_id: RUN_ID,
+      gateway: GATEWAY_URL,
+    });
 
     // 2. Await response
     const msg = await pollNextMessage();
@@ -101,7 +122,7 @@ async function main() {
       }
     }
 
-    // 5. Submit completed shard result
+    // 5. Submit completed shard result with gateway receipt
     const submitPayload = {
       run_id: RUN_ID,
       shard_id: shard.shard_id,
@@ -111,6 +132,8 @@ async function main() {
       tested: wasmRes.tested,
       result_digest: wasmRes.result_digest,
       hit_commitment: wasmRes.hit_commitment,
+      gateway: GATEWAY_URL,
+      gateway_status: gwHealth.ok ? 'OK' : 'DEGRADED',
     };
 
     await postSend(COORDINATOR_ID, 'SubmitShard', submitPayload);
@@ -124,6 +147,7 @@ async function main() {
 
   process.stdout.write(JSON.stringify({
     process_id: PROCESS_ID,
+    gateway: GATEWAY_URL,
     shards_completed: completedShards,
     total_compute_ms: totalComputeMs,
   }));
