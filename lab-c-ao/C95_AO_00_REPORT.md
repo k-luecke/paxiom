@@ -3,7 +3,8 @@
 **Status:** 
 - **C95-AO-00A (Local/WASM Runner):** CERTIFIED & FROZEN
 - **C95-AO-00B (Networked Distributed Runner):** CERTIFIED & FROZEN
-- **C95-AO-00C (Native AO/HyperBEAM Platform):** CERTIFIED & FROZEN
+- **C95-AO-00C (Native Local HyperBEAM):** CERTIFIED & FROZEN
+- **C95-AO-00D (External AO Distributed Compute):** SPECIFIED / NEXT MILESTONE
 **Repository:** `k-luecke/paxiom`  
 **Branch:** `lab-c-ao-runner`  
 **Execution Environment:** WSL2 (Ubuntu 24.04 Linux, x86_64), Node v18.19.1, Rustc 1.94.1, Erlang/OTP 27.2, HyperBEAM node on port 10000  
@@ -11,15 +12,16 @@
 
 ---
 
-## 1. Executive Summary & Three-Layer Milestone Architecture
+## 1. Executive Summary & Four-Layer Milestone Architecture
 
-To prevent architectural ambiguity between local process simulation, distributed networking, and native platform execution, the Lab C AO runner certification is structured into three distinct, verifiable milestones:
+To prevent architectural ambiguity between local process simulation, distributed networking, native local platform execution, and external distributed compute, the Lab C AO runner certification is structured into four distinct, verifiable milestones:
 
-$$\boxed{\text{C95-AO-00A: Local / WASM Runner}} \longrightarrow \boxed{\text{C95-AO-00B: Networked Distributed Runner}} \longrightarrow \boxed{\text{C95-AO-00C: Native AO / HyperBEAM Platform}}$$
+$$\boxed{\text{00A: Local / WASM}} \longrightarrow \boxed{\text{00B: Networked Distributed}} \longrightarrow \boxed{\text{00C: Native Local HyperBEAM}} \longrightarrow \boxed{\text{00D: External AO Distributed Compute}}$$
 
 1. **C95-AO-00A (Certified & Frozen):** Verifies the standalone Rust/WASM search kernel, C ABI compatibility, bit-identical native/WASM execution equivalence, deterministic shard leases, secret quarantine, and host initialization bottleneck characterization.
 2. **C95-AO-00B (Certified & Frozen):** Establishes an asynchronous, networked distributed runner operating across independent OS daemon processes communicating over an HTTP transport router with unique Process IDs and cryptographic message IDs (`msg-xxxx`). Calibrates an expensive synthetic oracle ($r^* = 200,000$ SHA-512 rounds, $\approx 160\text{ ms/candidate}$) matching Arweave Puzzle #3 oracle cost. Proves mid-lease fault tolerance, stale submission rejection, empirical scaling across $p \in \{1, 2, 4, 8\}$ workers, and zero duplicate accepted work under sustained soak.
-3. **C95-AO-00C (Certified & Frozen):** Executes the distributed runner directly against a live native HyperBEAM node (`http://127.0.0.1:10000`) implementing RFC 8941 HTTP signatures. Characterizes cold/warm/reconnect lifecycle costs, measures shard-size crossover ($Z \in \{16, 32, 64, 128, 256\}$), and measures parallel multi-worker scaling on a saturated 256-candidate workload across $p \in \{1, 2, 4, 8\}$ workers.
+3. **C95-AO-00C (Certified & Frozen):** Executes the distributed runner directly against a native HyperBEAM node on loopback (`http://127.0.0.1:10000`) implementing RFC 8941 HTTP signatures. Demonstrates that the native HyperBEAM runtime works without platform-layer bottlenecks (sub-millisecond platform tax), and characterizes cold/warm/reconnect lifecycle costs.
+4. **C95-AO-00D (Next Milestone):** Deploys the frozen kernel onto genuinely independent external AO compute units across the network. Resolves the central question: *did we acquire true distributed compute capacity, or merely build an efficient local distributed runner?*
 
 ---
 
@@ -139,14 +141,17 @@ Test 2 executed the calibrated search across $N = 128$ candidates ($8$ shards of
 
 ---
 
-## 6. Milestone C95-AO-00C: Native AO / HyperBEAM Platform Certification
+## 6. Milestone C95-AO-00C: Native Local HyperBEAM Platform Certification
 
-### 6.1 HyperBEAM Runtime Integration
+### 6.1 HyperBEAM Runtime Integration (Local Node Loopback)
 The local HyperBEAM node was brought online under Erlang/OTP 27.2 and Cowboy on `http://127.0.0.1:10000`. Every request to the runtime receives full cryptographic verification:
 - Protocol: HTTP/1.1 with chunked transfer and RFC 8941 HTTP Signatures.
 - Algorithm: `rsa-pss-sha512` signed with Arweave Key IDs (`keyid="rau8MOUxv..."`).
 - Headers: `ao-result: body`, `ao-types: status="integer"`, `content-digest: sha-256=:...`.
 - Verified endpoint: `http://127.0.0.1:10000/~test-device@1.0/test_func` $\longrightarrow$ `200 OK` (`GOOD_FUNCTION`).
+
+> [!NOTE]
+> Milestone 00C establishes that the native HyperBEAM runtime layer, process dispatch, and cryptographic message verification function correctly without platform-layer bottlenecks. However, because all workers and the node execute on `127.0.0.1:10000` on a single physical host, 00C does not establish external compute unit scaling. That verification is the explicit focus of Milestone 00D.
 
 ### 6.2 Experiment 1: Cold, Warm, and Reconnect Lifecycle
 Evaluating worker initialization, steady-state execution, and transient disconnection:
@@ -208,24 +213,25 @@ Evaluated on a saturated candidate space of $N = 256$ candidates ($16$ shards of
 
 *Raw data persisted in `lab-c-ao/c95_ao_00c_scaling_results.json`.*
 
-### 6.5 Wall-Clock Time Decomposition & Contention Breakdown
+### 6.5 Wall-Clock Time Decomposition & Scaling Residual Breakdown
 Wall-clock time is modeled as:
 
-$$T_p = T_{\rm compute}(p) + T_{\rm platform}(p) + T_{\rm contention}(p)$$
+$$T_p = T_{\rm compute}(p) + T_{\rm platform}(p) + T_{\rm residual}(p)$$
 
 Where:
 - $T_{\rm compute}(p) = \frac{T_1}{p}$ represents ideal linear parallel scaling.
 - $T_{\rm platform}(p) \approx 0.0002\text{ s} \times \frac{\text{shards}}{p} < 0.01\text{ s}$.
-- $T_{\rm contention}(p)$ is the residual scheduling and memory/CPU contention tax on the local host.
+- $T_{\rm residual}(p) = T_{\rm warm}(p) - [T_{\rm compute}(p) + T_{\rm platform}(p)]$ is the host/runtime scaling residual.
 
-| Workers ($p$) | Measured Wall $T_p$ | Ideal Compute $T_{\rm compute}(p)$ | Platform Overhead $T_{\rm platform}(p)$ | Host Contention Tax $T_{\rm contention}(p)$ |
+| Workers ($p$) | Measured Wall $T_p$ | Ideal Compute $T_{\rm compute}(p)$ | Platform Overhead $T_{\rm platform}(p)$ | Host/Runtime Scaling Residual $T_{\rm residual}(p)$ |
 | :---: | :---: | :---: | :---: | :---: |
 | **1** | 42.363 s | 42.363 s | 0.003 s | 0.000 s |
 | **2** | 29.745 s | 21.182 s | 0.002 s | 8.561 s |
 | **4** | 22.329 s | 10.591 s | 0.001 s | 11.737 s |
 | **8** | 14.920 s | 5.295 s | 0.001 s | 9.624 s |
 
-**Key Scaling Insight:** The residual slowdown at $p=8$ is not caused by HyperBEAM or the coordination layer (platform overhead remains $< 1\text{ ms}$). Instead, it is purely physical CPU core saturation and thread contention on the shared host machine. When deployed across geographically or physically distributed AO compute units, $T_{\rm contention}$ will not exhibit shared-CPU contention.
+**Scaling Residual Analysis:**
+The measured platform overhead to HyperBEAM remains sub-millisecond ($< 1\text{ ms}$), showing that the HyperBEAM HTTP coordination layer is not the bottleneck. The remaining efficiency loss (the residual $T_{\rm residual}(p) = T_{\rm warm}(p) - T_{\rm warm}(1)/p$) is classified strictly as a **host/runtime scaling residual**. While this residual is strongly consistent with local physical CPU core and memory bandwidth saturation on a single host machine running 8 concurrent SHA-512 worker loops, it also encompasses unmeasured thread scheduling dynamics, V8 event loop dispatch, and Erlang/OS runtime effects. Physically independent compute units in Milestone 00D are required to isolate true distributed scaling from local host effects.
 
 ---
 
@@ -295,12 +301,48 @@ Negative adversarial verification passed across all three milestones:
 
 ---
 
-## 11. Final Certification Summary
+## 11. Milestone Certification Status Summary
 
 | Milestone | Scope | Status | Key Deliverable |
 | :--- | :--- | :---: | :--- |
-| **C95-AO-00A** | Local / WASM Runner | **CERTIFIED** | Calibrated Rust/WASM search kernel ($4.33\text{M c/s}$ raw, $r^* = 200,000$ rounds) |
-| **C95-AO-00B** | Networked Distributed Runner | **CERTIFIED** | Asynchronous HTTP router, process IDs, fault injection, $N=128$ scaling |
-| **C95-AO-00C** | Native AO / HyperBEAM Platform | **CERTIFIED** | Live HyperBEAM node, RFC 8941 signatures, lifecycle curve, $2.84\times$ speedup ($17.16\text{ c/s}$) |
+| **C95-AO-00A** | Local / WASM Runner | **CERTIFIED & FROZEN** | Calibrated Rust/WASM search kernel ($4.33\text{M c/s}$ raw, $r^* = 200,000$ rounds) |
+| **C95-AO-00B** | Networked Distributed Runner | **CERTIFIED & FROZEN** | Asynchronous HTTP router, process IDs, fault injection, $N=128$ scaling |
+| **C95-AO-00C** | Native Local HyperBEAM | **CERTIFIED & FROZEN** | Live HyperBEAM node, RFC 8941 signatures, lifecycle curve, $2.84\times$ speedup ($17.16\text{ c/s}$) |
+| **C95-AO-00D** | External AO Distributed Compute | **SPECIFIED / NEXT** | Physically independent compute units, $1 \rightarrow 2 \rightarrow 4 \rightarrow 8$ scaling, economics target |
 
-All milestones are fully certified, reproducible, and committed to branch `lab-c-ao-runner` in `k-luecke/paxiom`.
+---
+
+## 12. Milestone C95-AO-00D: External AO Distributed Compute Specification
+
+### 12.1 Objective & Boundary
+Milestone 00D answers the core engineering question:
+> *Did we actually acquire compute capacity, or merely build a very nice distributed runner?*
+
+Where 00C proved that the native HyperBEAM runtime layer works on loopback (`127.0.0.1:10000`), 00D tests whether independent external AO compute units can scale the workload without shared host contention.
+
+### 12.2 Strict Constraints & Frozen Artifacts
+1. **Kernel Freeze:** Do not modify the search kernel. The binary `lab_c_ao_worker.wasm` is cryptographically locked to SHA-256:
+   `73ec9947271d2e7b5da6ed134d119c379708a888b5f80996b6e3a7e44a696d9d`
+2. **Workload Quarantine:** Do **NOT** run the real Arweave candidate space yet. Retain the frozen calibrated dummy workload ($r^* = 200,000$ rounds, $\approx 160\text{ ms/candidate}$) to determine external AO scaling and economics before spending a single real candidate evaluation.
+3. **Quarantine Firewalls:** Preserve all multi-layer secret quarantine checks in worker daemons and coordinator state machines.
+
+### 12.3 Experimental Sequence & Scaling Hypotheses
+1. **Initial Two-Node Verification:**
+   - Deploy worker daemons onto two physically independent machines / compute units.
+   - Run a sufficient batch of shards such that cold-start noise ($< 11\text{ ms}$) is eliminated.
+   - **Hypothesis Test:** If two independent workers approach:
+     $$2 \times 6.04\text{ c/s} \approx \mathbf{12.08\text{ candidates/sec}}$$
+     (compared to the local-host measured $8.61\text{ c/s}$ in 00C), this will provide direct empirical proof that local host resource contention was indeed suppressing 00C efficiency.
+2. **External Scaling Progression ($1 \rightarrow 2 \rightarrow 4 \rightarrow 8$):**
+   - Scale external compute units sequentially: $p \in \{1, 2, 4, 8\}$.
+   - Measure $T_{\rm wall}(p)$, throughput, speedup $S_p$, efficiency $\eta_p$, and monetary cost per 1,000 candidates evaluated.
+3. **Illustrative Benchmark Target:**
+   - Assuming an external efficiency of $\approx 90\%$ across 8 independent workers:
+     $$\text{Throughput}(8) = 8 \times 6.04\text{ c/s} \times 0.90 \approx \mathbf{43.5\text{ candidates/sec}}$$
+   - At this target rate, the search time for the novel $173,376$-candidate family would fall to:
+     $$T_{\rm search} = \frac{173,376}{43.5\text{ c/s}} \approx 3,985\text{ s} \approx \mathbf{66.4\text{ minutes}}$$
+   - This serves as an unambiguous benchmark target to hit or disprove experimentally.
+4. **Economics & Policy Determination:**
+   - Establish network fee economics (cost per compute unit / transaction).
+   - Determine optimal shard size policy $Z$ and worker pool cardinality before attaching real puzzle candidates.
+
