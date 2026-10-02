@@ -308,7 +308,8 @@ Negative adversarial verification passed across all three milestones:
 | **C95-AO-00A** | Local / WASM Runner | **CERTIFIED & FROZEN** | 4.33M c/s lightweight synthetic baseline; calibrated expensive oracle ($r^* = 200,000$) separately |
 | **C95-AO-00B** | Networked Distributed Runner | **CERTIFIED & FROZEN** | Asynchronous HTTP router, process IDs, fault injection, $N=128$ scaling |
 | **C95-AO-00C** | Native Local HyperBEAM | **CERTIFIED & FROZEN** | Live HyperBEAM node, RFC 8941 signatures, lifecycle curve, $2.84\times$ speedup ($17.16\text{ c/s}$) |
-| **C95-AO-00D** | External AO Compute & Multi-Gateway | **EXECUTED & BENCHMARKED** | AR.IO decentralized gateway pool (7 operators), $p \in \{1, 2, 4\}$ scaling, verified economics ($0/1k) |
+| **C95-AO-00D** | External Multi-Gateway Routing | **CERTIFIED & FROZEN** | Decentralized AR.IO gateway pool (7 operators), $p \in \{1, 2, 4\}$ routing, $(\$C_{\rm gw} = \$0, C_{\rm local\ compute} > 0)$ |
+| **C95-AO-00E** | External Compute Execution | **BLOCKED** | Certified blocker: public CU whitelisting rejects arbitrary WASM (`BLOCK_EXTERNAL_COMPUTE_ACCESS`) |
 
 ---
 
@@ -361,7 +362,14 @@ This schema cleanly distinguishes near-zero marginal cost scaling on decentraliz
 
 ---
 
-## 13. Milestone C95-AO-00D Experimental Results: AR.IO Decentralized Multi-Gateway Runner & Economics
+## 13. Milestone C95-AO-00D Experimental Results: External Multi-Gateway Routing Certified
+
+> [!IMPORTANT]
+> **Milestone 00D Certification Boundary:**
+> $$\boxed{\text{external decentralized gateway routing + local compute}}$$
+> What Milestone 00D establishes is that asynchronous shard leasing, protocol transport, and cryptographic receipt routing function seamlessly across independently operated external AR.IO decentralized gateways. However, the expensive $r^* = 200,000$ SHA-512 WASM loops executed on the local physical machine. Therefore:
+> $$\text{gateway decentralization} \ne \text{compute decentralization}$$
+
 
 ### 13.1 Decentralized Gateway Pool Discovery & Audit
 Queried on-chain via the AR.IO Gateway Address Registry using `@ar.io/sdk` on Solana Mainnet (`https://api.mainnet-beta.solana.com`). Filtered for active, responsive gateways operating the Arweave HTTP protocol:
@@ -402,21 +410,59 @@ Evaluated on saturated workload of $128$ candidates ($8$ shards of $16$, $\appro
 
 *Raw data persisted in `lab-c-ao/c95_ao_00d_scaling_results.json`.*
 
-### 13.4 Economics Tuple Verification
-Conforming to the 00D reporting schema $\boxed{(\text{workers}, \text{throughput}, \eta, \text{wall time}, \text{AO cost}, \text{cost/}10^3\text{ candidates})}$:
-- **$p=1$:** $\boxed{(1, \ 5.83\text{ c/s}, \ 1.000, \ 21.96\text{ s}, \ \$0.0000, \ \$0.0000)}$
-- **$p=2$:** $\boxed{(2, \ 8.54\text{ c/s}, \ 0.733, \ 14.99\text{ s}, \ \$0.0000, \ \$0.0000)}$
-- **$p=4$:** $\boxed{(4, \ 10.19\text{ c/s}, \ 0.437, \ 12.56\text{ s}, \ \$0.0000, \ \$0.0000)}$
+### 13.4 Comparative Scaling Curve: 00B vs 00D
+A direct side-by-side comparison between the local network router (00B) and the decentralized AR.IO gateway pool (00D) shows nearly indistinguishable throughput:
 
-**Economic Takeaway:** Query routing, L1 transaction retrieval, and message verification across decentralized AR.IO gateway operators incur **zero marginal protocol cost** under the AR.IO gateway network staking model.
+| Framework / Architecture | $p=1$ | $p=2$ | $p=4$ |
+| :--- | :---: | :---: | :---: |
+| **C95-AO-00B (Local HTTP Router)** | 5.83 c/s | 9.22 c/s | 10.14 c/s |
+| **C95-AO-00D (Decentralized AR.IO Gateways)** | 5.83 c/s | 8.54 c/s | 10.19 c/s |
 
-### 13.5 Analysis of the $1 \rightarrow 2$ Scaling Hypothesis & Host vs Network Isolation
-The primary test of Milestone 00D was:
-$$\eta_2 = \frac{r_2}{2 r_1} = \frac{8.54}{2 \times 5.83} = 0.733$$
+**Scientific Interpretation:** Changing the network routing path barely alters compute throughput. This provides definitive empirical evidence that the laptop host machine remains the computational engine. The host/runtime scaling residual is identical because the physical cores executing the WASM binary are unchanged.
 
-**Key Scientific Finding:**
-1. **Network Layer Independence Succeeded:** Gateway traffic, network latency, and L1 routing were decoupled across independent external operators (`arweave.net` and `vevivo.art`). Zero gateway bottlenecks or network throttling were observed.
-2. **Compute Layer Co-Location Limits:** Because the worker daemon processes executed their WASM loops on the local physical machine, the single-host host/runtime residual observed in 00B ($8.54\text{ c/s}$ vs. 00B's $9.22\text{ c/s}$) persisted.
-3. **Implication for Linear Scaling:** Reaching the ideal $2 \times r_1 \approx 11.66\text{--}12.08\text{ c/s}$ ($\eta_2 \approx 1.0$) requires executing worker daemons on physically distinct compute hardware or permissionless AO Compute Units once public CU whitelisting is opened.
+### 13.5 Economics Qualification
+The measured economic vector for Milestone 00D is strictly:
+
+$$\boxed{(\$C_{\rm gateway} = \$0.0000, \quad C_{\rm local\ compute} > 0 \text{ [host CPU unpriced]})}$$
+
+We certify that decentralized gateway routing, L1 transaction retrieval, and message verification incurred **no measured marginal protocol charge** under the AR.IO network staking model. We do not claim $\$0/1000\text{ compute evaluations}$ because the compute evaluations consumed host CPU cycles. Genuine compute economics are reserved for Milestone 00E.
+
+---
+
+## 14. Milestone C95-AO-00E: External Compute Execution & Blocker Certification
+
+### 14.1 Objective & Boundary Condition
+Milestone 00E defines the compute boundary:
+> **The Decisive Boundary Test:** Move even one expensive shard ($r^* = 200,000$ rounds) off the local host machine—demonstrated by shutting down the local worker daemon process and still receiving the verified cryptographic commitment and shard digest from an external compute endpoint.
+
+### 14.2 Empirical Probe of External Compute Infrastructure
+We probed candidate public AO and HyperBEAM compute endpoints across the ecosystem:
+
+1. **Forward Research Public Compute Unit (`cu.ao-testnet.xyz`, `cu1006.ao-testnet.xyz`, `cu1007.ao-testnet.xyz`):**
+   - **Interface:** REST `POST /dry-run?process-id={PID}`, `GET /result/{MID}?process-id={PID}`.
+   - **Access Control:** Operator whitelist strictly enforced by address `WjnS-s03HWsDSdMnyTdzB1eHZB2QheUWP_FVRVYxkXk`.
+   - **Result on Custom Processes:** Explicitly rejected with `HTTP 403 Forbidden`:
+     ```json
+     {"error": "Process not found in whitelist", "processId": "0000000000000000000000000000000000000000000"}
+     ```
+   - **Result on Unpermissioned Dry-Run:** Connection stalls / dropped (`UND_ERR_HEADERS_TIMEOUT`).
+2. **Public HyperBEAM Node (`tee-6.forward.computer`):**
+   - Default `DEFAULT_HB_URL` configured in `@permaweb/aoconnect`.
+   - **Result:** Connection timed out on port 443 (`ETIMEDOUT` after 10s); endpoint is unreachable.
+3. **Public AOS HyperBEAM Gateway (`push.forward.computer`):**
+   - Documented `aos --node` entrypoint.
+   - **Result:** Connection timed out on port 443 (`ETIMEDOUT` after 134s); endpoint is unreachable.
+
+### 14.3 Certified Blocker
+Because public AO Compute Units enforce a strict operator whitelist on process IDs, and candidate public HyperBEAM nodes are unreachable on port 443, arbitrary custom WASM compute execution cannot presently be dispatched to public testnet CUs without manual whitelisting.
+
+We formally certify this operational barrier as:
+
+$$\boxed{\texttt{BLOCK\_EXTERNAL\_COMPUTE\_ACCESS}}$$
+
+### 14.4 Unblocking Pathways for 00E
+To achieve the decisive boundary condition of Milestone 00E without compromising the experimental rigor of compute decentralization:
+1. **Option A (AO Team Whitelisting):** Register the frozen search kernel process ID with Forward Research / AO operator `WjnS-s03HWsDSdMnyTdzB1eHZB2QheUWP_FVRVYxkXk` to allow execution on `cu.ao-testnet.xyz`.
+2. **Option B (Remote Independent Node):** Deploy a secondary native HyperBEAM instance onto a distinct remote host / cloud VM (e.g. AWS or Hetzner), wire the worker daemon to the remote node, shut down the local worker, and certify remote shard completion and linear $1 \rightarrow 2$ scaling.
 
 
