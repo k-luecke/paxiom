@@ -1,0 +1,10 @@
+[package]
+name = "paxiom-update-program"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+paxiom-light-client-lib.workspace = true
+sp1-zkvm.workspace = true
+

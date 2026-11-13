@@ -1,0 +1,82 @@
+name: recursive-light-client
+
+on:
+  push:
+    paths:
+      - 'recursive-light-client/**'
+      - 'ao-processes/recursive-checkpoint.lua'
+      - 'services/shared/recursive-checkpoint.mjs'
+      - 'services/shared/test/recursive-checkpoint.test.mjs'
+      - '.github/workflows/recursive-light-client.yml'
+  pull_request:
+    paths:
+      - 'recursive-light-client/**'
+      - 'ao-processes/recursive-checkpoint.lua'
+      - 'services/shared/recursive-checkpoint.mjs'
+      - 'services/shared/test/recursive-checkpoint.test.mjs'
+      - '.github/workflows/recursive-light-client.yml'
+  workflow_dispatch:
+    inputs:
+      generate_recursive_proof:
+        description: 'Run compressed base and recursive proving on a >=32 GiB self-hosted runner'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recursive-light-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.0
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '34.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/verify-fixture.mjs
+      - run: cargo test -p paxiom-light-client-lib --features serde_json --locked
+      - run: node --test services/shared/test/recursive-checkpoint.test.mjs
+        working-directory: .
+
+  sp1-guests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recursive-light-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.0
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: '34.2'
+      - name: Install SP1 6.3.1
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          "$HOME/.sp1/bin/sp1up" --version 6.3.1
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+      - run: CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo check -p paxiom-light-client-script --locked
+      - run: CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 cargo run -p paxiom-light-client-script --locked -- execute --fixture fixtures/mainnet-14814119-14814120.json
+
+  recursive-proof:
+    if: github.event_name == 'workflow_dispatch' && inputs.generate_recursive_proof
+    runs-on: [self-hosted, linux, x64, zk-prover, ram-32gb]
+    defaults:
+      run:
+        working-directory: recursive-light-client
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/verify-fixture.mjs
+      - run: PAXIOM_GENERATE_PROOFS=1 scripts/reproduce.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paxiom-recursive-proof
+          path: recursive-light-client/artifacts/proofs/*.bin
+          if-no-files-found: error

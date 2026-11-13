@@ -1,0 +1,24 @@
+[package]
+name = "paxiom-light-client-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "paxiom-light-client"
+
+[[bin]]
+name = "paxiom-light-client"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.98"
+clap = { version = "4.5.40", features = ["derive"] }
+hex = { workspace = true, features = ["std"] }
+paxiom-light-client-lib = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["std"] }
+serde_json = "1.0.140"
+sp1-sdk.workspace = true
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
+
+[build-dependencies]
+sp1-build.workspace = true
+

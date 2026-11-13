@@ -1,0 +1,11 @@
+[package]
+name = "paxiom-accumulator-program"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+paxiom-light-client-lib.workspace = true
+serde.workspace = true
+sha2.workspace = true
+sp1-zkvm = { workspace = true, features = ["verify"] }

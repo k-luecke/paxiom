@@ -1,0 +1,84 @@
+{
+  "schema": "paxiom-sp1-evidence-manifest-v1",
+  "recordedAt": "2026-07-21T03:58:58Z",
+  "fixture": {
+    "path": "fixtures/mainnet-14814119-14814120.json",
+    "sha256": "c097d66a6aa2b2c04787816f94214dc883c6638df444f9a00c3d67b3bf83d9eb",
+    "parentSlots": ["14814117", "14814118"],
+    "attestedSlots": ["14814118", "14814119"],
+    "participants": [511, 511]
+  },
+  "toolchain": {
+    "rust": "1.93.0",
+    "sp1": "6.3.1",
+    "protoc": "34.2"
+  },
+  "nativeVerification": {
+    "status": "passed",
+    "positiveUpdates": 2,
+    "negativeTestCategories": [
+      "signature",
+      "header-root",
+      "participation-bits",
+      "threshold",
+      "fork-version",
+      "committee-root",
+      "committee-length",
+      "signature-slot"
+    ]
+  },
+  "guestBuild": {
+    "updateProgram": "passed",
+    "accumulatorProgram": "passed",
+    "elfHashes": {
+      "updateProgramSha256": "30f7c30ec7bc39eacb10167cc483f3ef2ce5bfba87f51ecd7754f2a9e6745aa7",
+      "accumulatorProgramSha256": "d1e634cf1fdb5d5379533068652be39104b3ee849ad236d0d2ceb3db3308c251"
+    }
+  },
+  "guestExecution": {
+    "status": "attempted-local-hardware-exhausted",
+    "updates": [],
+    "attempts": [
+      {
+        "executor": "portable",
+        "updateIndex": 0,
+        "completed": false,
+        "wallSeconds": 538.69,
+        "peakRssKiB": 5523616,
+        "publicValues": null,
+        "report": null
+      },
+      {
+        "executor": "native-override",
+        "updateIndex": 0,
+        "completed": false,
+        "wallSecondsApprox": 900,
+        "observedRssKiBAtLeast": 5503332,
+        "publicValues": null,
+        "report": null
+      }
+    ]
+  },
+  "verificationKeys": {
+    "status": "attempted-local-hardware-exhausted",
+    "update": null,
+    "accumulator": null,
+    "updateSetupAttempt": {
+      "completed": false,
+      "wallSeconds": 535.72,
+      "peakRssKiB": 5467168
+    }
+  },
+  "baseProof": {
+    "status": "not-generated",
+    "artifact": null
+  },
+  "recursiveProof": {
+    "status": "not-generated",
+    "artifact": null
+  },
+  "aoDeployment": {
+    "status": "not-deployed",
+    "processId": null
+  }
+}

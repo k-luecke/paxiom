@@ -1,0 +1,25 @@
+[package]
+name = "paxiom-light-client-lib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["std"]
+std = ["serde/std", "sha2/std", "sha2-09/std", "hex/std"]
+
+[dependencies]
+serde.workspace = true
+sha2.workspace = true
+sha2-09.workspace = true
+hex.workspace = true
+serde_json = { version = "1.0.140", optional = true }
+bls12_381 = { git = "https://github.com/sp1-patches/bls12_381", tag = "patch-0.8.0-sp1-6.0.0-v2", default-features = false, features = ["groups", "pairings", "alloc", "experimental"] }
+
+[[bin]]
+name = "committee-root"
+path = "src/bin/committee-root.rs"
+required-features = ["std", "serde_json"]
+
+[dev-dependencies]
+serde_json = "1.0.140"

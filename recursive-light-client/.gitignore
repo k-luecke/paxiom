@@ -1,0 +1,6 @@
+/target/
+/artifacts/proofs/*.bin
+/artifacts/proofs/*.json
+!.gitkeep
+.env
+

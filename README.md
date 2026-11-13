@@ -1,4 +1,18 @@
-# Paxiom — Trustless Cross-Chain Verification Infrastructure
+# Paxiom — Research Prototype and Architecture
+
+> **Evidence correction (2026-07-21):** Most of the document below is an
+> architectural proposal, not a description of an operational trustless
+> system. Paxiom does not currently verify Ethereum from genesis, prove
+> finality or committee rotation, run an archive node in AO, eliminate trusted
+> proof generation, or execute indefinitely without an operator. Do not use
+> those statements as completed-work claims.
+>
+> The bounded implementation and its exact evidence gates are in
+> [`recursive-light-client/`](recursive-light-client/). Start with
+> [`CLAIMS.md`](recursive-light-client/CLAIMS.md) and
+> [`SOUNDNESS.md`](recursive-light-client/SOUNDNESS.md). The included AO
+> checkpoint process is an authenticated index for externally verified proofs;
+> it is not an SP1 verifier.
 
 > **Phase 0 substrate:** the HyperBEAM bring-up, the sync-committee
 > HyperBEAM device, and the Load Network state-reconstruction client are

@@ -1,0 +1,27 @@
+{
+  "archivedAt": "2026-11-13",
+  "sourceWorktree": "/home/kyle_w_luecke/paxiom",
+  "baseBranch": "codex/resume-paxiom",
+  "originalSp1CommitSha": "202d5f9",
+  "parentX402ClientCommitSha": "1d59915",
+  "relocatedWorkflowNote": "Moved .github/workflows/recursive-light-client.yml -> recursive-light-client/ci/recursive-light-client.yml for OAuth push compatibility and to prevent archive CI runs.",
+  "gitWarning": "Predates PR #117 security audit fixes on origin/main (284fc44). Cherry-pick 1d59915 and SP1 commit onto origin/main; never merge/reset main directly.",
+  "hostToolchains": {
+    "os": "WSL2 Ubuntu 24.04 x86_64",
+    "node": "v18.19.1",
+    "npm": "9.2.0",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "sp1CargoProve": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01Z)",
+    "sp1ZkvmCrate": "6.3.1"
+  },
+  "undeclaredNodeModulesOnDisk": {
+    "root": {
+      "arweave": "1.15.7",
+      "ethereum-cryptography": "3.2.0"
+    },
+    "hoistedFromRootUsedBySdkAndUi": {
+      "viem": "2.47.5"
+    }
+  }
+}

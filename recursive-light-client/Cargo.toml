@@ -1,0 +1,27 @@
+[workspace]
+members = ["lib", "program", "aggregate-program", "script"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+paxiom-light-client-lib = { path = "lib", default-features = false }
+serde = { version = "1.0.219", default-features = false, features = ["derive", "alloc"] }
+sha2 = { version = "0.10.9", default-features = false }
+sha2-09 = { package = "sha2", version = "0.9.9", default-features = false }
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+sp1-zkvm = "=6.3.1"
+sp1-sdk = "=6.3.1"
+sp1-build = "=6.3.1"
+
+[profile.release]
+lto = "thin"
+
+# SP1's host SDK links a very large dependency graph. Omitting host debug info
+# avoids a repeatable WSL2 SIGBUS during the final link; guest release ELFs are
+# built separately by sp1-build and are unaffected by this host profile.
+[profile.dev]
+debug = 0
