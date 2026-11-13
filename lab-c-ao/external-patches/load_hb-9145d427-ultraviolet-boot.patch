@@ -1,0 +1,75 @@
+From 9145d4277baafac3d200d0185d90e899494c8085 Mon Sep 17 00:00:00 2001
+From: "Kyle W. Luecke" <k2luecke@gmail.com>
+Date: Sun, 3 May 2026 12:54:03 -0600
+Subject: [PATCH] Enable local Ultraviolet-only HyperBEAM boot
+
+---
+ scripts/run-ultraviolet-local.sh | 13 +++++++++++++
+ src/hb_app.erl                   | 30 ++++++++++++++++++++++--------
+ 2 files changed, 35 insertions(+), 8 deletions(-)
+ create mode 100755 scripts/run-ultraviolet-local.sh
+
+diff --git a/scripts/run-ultraviolet-local.sh b/scripts/run-ultraviolet-local.sh
+new file mode 100755
+index 00000000..c38bc80a
+--- /dev/null
++++ b/scripts/run-ultraviolet-local.sh
+@@ -0,0 +1,13 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++cd "$(dirname "$0")/.."
++
++export PATH="/usr/local/bin:/home/kyle_w_luecke/.cargo/bin:/home/kyle_w_luecke/.kerl/27.2/bin:/usr/bin:/bin"
++
++# Keep Helios out of the critical path for the local Ultraviolet node.
++# Set LOAD_HELIOS_AUTOSTART=1 when native/helios_nif is built and ready.
++export LOAD_HELIOS_AUTOSTART="${LOAD_HELIOS_AUTOSTART:-0}"
++
++rebar3 compile
++exec rebar3 shell
+diff --git a/src/hb_app.erl b/src/hb_app.erl
+index d2f5e6cb..732523dd 100644
+--- a/src/hb_app.erl
++++ b/src/hb_app.erl
+@@ -23,15 +23,29 @@ start(_StartType, _StartArgs) ->
+     hb_sup:start_link(),
+     ok = dev_scheduler_registry:start(),
+     _TimestampServer = ar_timestamp:start(),
+-    
+-    % Start the Helios server
+-    case dev_helios:auto_start() of
+-        {ok, _} -> ok;
+-        {error, Reason} -> 
+-            io:format("Warning: Failed to start Helios server: ~p~n", [Reason])
+-    end,
++    maybe_start_helios(),
+     
+     {ok, _} = hb_http_server:start().
+ 
+ stop(_State) ->
+-    ok.
+\ No newline at end of file
++    ok.
++
++maybe_start_helios() ->
++    case helios_auto_start_enabled() of
++        true ->
++            case dev_helios:auto_start() of
++                {ok, _} -> ok;
++                {error, Reason} ->
++                    io:format("Warning: Failed to start Helios server: ~p~n", [Reason])
++            end;
++        false ->
++            io:format("Helios auto-start disabled. Set LOAD_HELIOS_AUTOSTART=1 to enable.~n"),
++            ok
++    end.
++
++helios_auto_start_enabled() ->
++    case os:getenv("LOAD_HELIOS_AUTOSTART") of
++        false -> false;
++        Value ->
++            lists:member(string:lowercase(Value), ["1", "true", "yes", "on"])
++    end.
+-- 
+2.43.0

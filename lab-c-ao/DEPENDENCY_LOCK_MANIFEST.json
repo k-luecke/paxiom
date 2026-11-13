@@ -1,0 +1,29 @@
+{
+  "archivedAt": "2026-11-13",
+  "sourceWorktree": "/home/kyle_w_luecke/paxiom-lab-c-ao",
+  "baseBranch": "lab-c-ao-runner",
+  "baseCommit": "ca90774",
+  "hostToolchains": {
+    "os": "WSL2 Ubuntu 24.04 x86_64",
+    "node": "v18.19.1",
+    "rustc": "1.94.1",
+    "erlangBeam": "13.2.2.5 (OTP 27.2 used for native HyperBEAM node)",
+    "externalHyperBeamCheckout": {
+      "path": "/home/kyle_w_luecke/HyperBEAM",
+      "commit": "b2743e4a"
+    },
+    "externalLoadHbCheckout": {
+      "path": "/home/kyle_w_luecke/load_hb",
+      "commit": "9145d427",
+      "base": "d6ffb628"
+    }
+  },
+  "undeclaredNodeModulesOnDisk": {
+    "@ar.io/sdk": "4.5.0",
+    "@solana/rpc": "6.10.0",
+    "arweave": "1.15.7",
+    "ethereum-cryptography": "2.2.1",
+    "@ethereumjs/util": "10.1.1",
+    "viem": "2.47.5"
+  }
+}
