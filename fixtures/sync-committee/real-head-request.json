@@ -1,0 +1,9 @@
+{
+  "slot": "14663430",
+  "block_root": "0x0c8577955f6bec81b86dc0547ee1c74f36e928c0d12f7ac4acde86ef87061f1e",
+  "parent_root": "0x4e715dccf23a03b8c8bd567d633d3027b9b2d7d7fa12dd414a240872bb0c8e0a",
+  "sync_aggregate": {
+    "sync_committee_bits": "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffffffffffff7ffffffffffffffffffffffffffffffffffffffffffff",
+    "sync_committee_signature": "0x902307d02c1acb8a178c807f455f890739c239ffb4e95fe3798b107de500f195724af30bca12308aaf6f560b08c6f37201ea4be5fde287fc01d507ada2d62874ecfb26af89f595625074fc326a4489f61c7bb778f869fb026aad3e265e65fe40"
+  }
+}

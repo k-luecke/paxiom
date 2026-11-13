@@ -1,0 +1,26 @@
+{
+  "archivedAt": "2026-11-13",
+  "sourceWorktree": "/home/kyle_w_luecke/paxiom-ops-wt",
+  "baseBranch": "feat/smoke-test-real-api",
+  "baseCommit": "4eb0331",
+  "crossRepoDependencies": {
+    "BLS_DEVICE_HARNESS": {
+      "repo": "k-luecke/bls-verifier",
+      "branch": "archive/2026-11-13-bls-device-harness-postaudit",
+      "commit": "222e023",
+      "binary": "target/release/bls-device-harness"
+    }
+  },
+  "installedNodePackages": {
+    "@ethereumjs/rlp": "10.1.1",
+    "@ethereumjs/trie": "6.2.1",
+    "@ethereumjs/util": "10.1.1",
+    "@permaweb/aoconnect": "0.0.93",
+    "@x402/core": "2.11.0",
+    "@x402/evm": "2.11.0",
+    "@x402/express": "2.11.0",
+    "ethereum-cryptography": "2.2.1",
+    "express": "5.2.1",
+    "viem": "2.47.5"
+  }
+}

@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "npm run test:sync-committee && npm run test:load-network",
-    "test:sync-committee": "node --test services/sync-committee/test/server.test.mjs",
+    "test:sync-committee": "node --test services/sync-committee/test/*.test.mjs",
     "test:load-network": "node --test load-network/test/verifier.test.mjs load-network/test/reconstruct.test.mjs load-network/test/live.test.mjs",
+    "a202:paid-testnet": "node scripts/a202-base-sepolia-paid-run.mjs",
+    "a202:local-testnet": "bash scripts/a202-local-testnet-run.sh",
     "hyperbeam:install": "./hyperbeam/bringup/install.sh",
     "hyperbeam:shell": "./hyperbeam/bringup/shell.sh",
     "hyperbeam:smoke": "./hyperbeam/bringup/smoke-test.sh",
@@ -21,6 +23,10 @@
     "@ethereumjs/trie": "^6.2.1",
     "@ethereumjs/util": "^10.1.1",
     "@permaweb/aoconnect": "^0.0.93",
+    "@x402/core": "^2.11.0",
+    "@x402/evm": "^2.11.0",
+    "@x402/express": "^2.11.0",
+    "express": "^5.2.1",
     "viem": "^2.47.5"
   }
 }

@@ -11,7 +11,15 @@ this service is the public face that x402-gates and dispatches.
 # CI / local without HyperBEAM:
 MOCK_DEVICE=1 node services/sync-committee/server.mjs
 
-# Live (requires hyperbeam/bringup + register.sh):
+# Paid Base Sepolia rehearsal:
+REQUIRE_X402=1 \
+X402_MODE=testnet \
+X402_PAY_TO=0xYourReceivingWallet \
+BLS_DEVICE_VIA_SUBPROCESS=1 \
+BLS_DEVICE_HARNESS=/absolute/path/to/bls-device-harness \
+node services/sync-committee/server.mjs
+
+# Live HyperBEAM dispatch (requires hyperbeam/bringup + register.sh):
 node services/sync-committee/server.mjs
 ```
 
@@ -34,6 +42,26 @@ runs without HyperBEAM.
 
 ## x402
 
-`X-PAYMENT` header is forwarded; if `REQUIRE_X402=1` is set, requests
-without the header receive a 402 response. The Coinbase facilitator
-verification is filed for follow-up — Phase 0 ships the stub.
+`REQUIRE_X402=1` enables the official x402 resource-server middleware. The
+middleware verifies payment with the hosted facilitator, runs the device only
+after verification, settles the payment, and only then releases the JSON
+response. Unpaid calls receive `402` with `PAYMENT-REQUIRED`.
+
+Working prices:
+
+| Mode | Network | Price |
+|------|---------|-------|
+| `X402_MODE=testnet` | Base Sepolia (`eip155:84532`) | `$0.001` |
+| `X402_MODE=mainnet` | Base mainnet (`eip155:8453`) | `$0.01` |
+
+Safety rule: `REQUIRE_X402=1` refuses to start with `MOCK_DEVICE=1`. Mock
+responses are useful for local tests, but they are never billable.
+
+Use `BLS_DEVICE_VIA_SUBPROCESS=1` for the first paid pilot because the harness
+has already produced real mainnet `verified:true` evidence. Move to the
+HyperBEAM-hosted device after registration is proven.
+
+Public metadata is exposed at:
+
+- `GET /mcp/tools.json`
+- `GET /mcp/paxiom-sync-committee.json`
