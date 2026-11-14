@@ -1,4 +1,7 @@
-# Paxiom
+# Paxiom (Ethereum MPT & Substrate Prototype)
+
+> **Looking for the live Paxiom Receipts (`paxiom.receipt.v0`) product, SDKs, MCP server, or `api.paxiom.org` verifier?**
+> See **[`k-luecke/paxiom-static`](https://github.com/k-luecke/paxiom-static)** and **[`paxiom.org`](https://paxiom.org)** (`@paxiom/receipts@0.1.3` on npm · `paxiom-receipts==0.1.3` on PyPI · `io.github.k-luecke/paxiom-receipts` on the Official MCP Registry). This repository preserves the upstream Ethereum Merkle-Patricia state-verification and x402 substrate prototype (`159` tests).
 
 Cross-chain state verification infrastructure. The goal is to answer questions
 about Ethereum state — *what did storage slot X of contract Y hold at block N?* —
