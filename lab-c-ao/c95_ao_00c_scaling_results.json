@@ -1,0 +1,182 @@
+{
+  "milestone": "C95-AO-00C",
+  "status": "CERTIFIED",
+  "timestamp": "2026-10-02T19:51:23.959Z",
+  "kernel_digest": "73ec9947271d2e7b5da6ed134d119c379708a888b5f80996b6e3a7e44a696d9d",
+  "hyperbeam_node_url": "http://127.0.0.1:10000",
+  "lifecycle": {
+    "t_cold": 2.6462,
+    "t_first_shard": 2.6452,
+    "t_warm_shard": 2.6356,
+    "t_reconnect": 2.8407,
+    "t_reconnect_overhead_ms": 76.67,
+    "amortization": [
+      {
+        "n": 1,
+        "t_bar": 2.6462,
+        "cold_tax": 0.0106
+      },
+      {
+        "n": 5,
+        "t_bar": 2.6377,
+        "cold_tax": 0.0021
+      },
+      {
+        "n": 10,
+        "t_bar": 2.6367,
+        "cold_tax": 0.0011
+      },
+      {
+        "n": 50,
+        "t_bar": 2.6358,
+        "cold_tax": 0.0002
+      },
+      {
+        "n": 100,
+        "t_bar": 2.6357,
+        "cold_tax": 0.0001
+      },
+      {
+        "n": 500,
+        "t_bar": 2.6356,
+        "cold_tax": 0
+      },
+      {
+        "n": 1000,
+        "t_bar": 2.6356,
+        "cold_tax": 0
+      }
+    ]
+  },
+  "shard_size_crossover": [
+    {
+      "shard_size": 16,
+      "t_wall": 3.0673,
+      "t_compute": 3.0671,
+      "t_platform": 0.0002,
+      "r_z_percent": 0.01
+    },
+    {
+      "shard_size": 32,
+      "t_wall": 5.6977,
+      "t_compute": 5.6973,
+      "t_platform": 0.0004,
+      "r_z_percent": 0.01
+    },
+    {
+      "shard_size": 64,
+      "t_wall": 10.387,
+      "t_compute": 10.3868,
+      "t_platform": 0.0002,
+      "r_z_percent": 0
+    },
+    {
+      "shard_size": 128,
+      "t_wall": 20.7008,
+      "t_compute": 20.7007,
+      "t_platform": 0.0001,
+      "r_z_percent": 0
+    },
+    {
+      "shard_size": 256,
+      "t_wall": 41.7872,
+      "t_compute": 41.7865,
+      "t_platform": 0.0007,
+      "r_z_percent": 0
+    }
+  ],
+  "scaling": {
+    "cold_scaling": [
+      {
+        "workers": 1,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 41.712,
+        "throughput_c_per_s": 6.14,
+        "speedup": 1,
+        "efficiency": 1,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 2,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 27.67,
+        "throughput_c_per_s": 9.25,
+        "speedup": 1.507,
+        "efficiency": 0.753,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 4,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 21.895,
+        "throughput_c_per_s": 11.69,
+        "speedup": 1.905,
+        "efficiency": 0.476,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 8,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 16.463,
+        "throughput_c_per_s": 15.55,
+        "speedup": 2.534,
+        "efficiency": 0.317,
+        "duplicate_work": 0,
+        "hits": 1
+      }
+    ],
+    "warm_scaling": [
+      {
+        "workers": 1,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 42.363,
+        "throughput_c_per_s": 6.04,
+        "speedup": 1,
+        "efficiency": 1,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 2,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 29.745,
+        "throughput_c_per_s": 8.61,
+        "speedup": 1.424,
+        "efficiency": 0.712,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 4,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 22.329,
+        "throughput_c_per_s": 11.46,
+        "speedup": 1.897,
+        "efficiency": 0.474,
+        "duplicate_work": 0,
+        "hits": 1
+      },
+      {
+        "workers": 8,
+        "candidate_count": 256,
+        "shard_size": 16,
+        "wall_seconds": 14.92,
+        "throughput_c_per_s": 17.16,
+        "speedup": 2.839,
+        "efficiency": 0.355,
+        "duplicate_work": 0,
+        "hits": 1
+      }
+    ]
+  }
+}

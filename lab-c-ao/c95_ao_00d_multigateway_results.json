@@ -1,0 +1,210 @@
+{
+  "p2": {
+    "workers": 2,
+    "wall_seconds": 8.765,
+    "throughput_c_per_s": 7.3,
+    "gateways_used": [
+      "https://arweave.net",
+      "https://vevivo.art"
+    ],
+    "worker_results": [
+      {
+        "workerId": "worker-gw-2-1",
+        "gateway": "https://arweave.net",
+        "process_id": "worker-gw-2-1",
+        "shards_completed": 2,
+        "total_compute_ms": 7576.977485000156
+      },
+      {
+        "workerId": "worker-gw-2-2",
+        "gateway": "https://vevivo.art",
+        "process_id": "worker-gw-2-2",
+        "shards_completed": 2,
+        "total_compute_ms": 7599.8709610002115
+      }
+    ],
+    "ledger": {
+      "run_id": "run-multi-gw-p2",
+      "target_id": "target-multi-gw-p2",
+      "family_digest": "d150c8942880db9ffe2fcce0a592a995c9a414a2dea72bdce45b1bb5cf2853e6",
+      "kernel_digest": "73ec9947271d2e7b5da6ed134d119c379708a888b5f80996b6e3a7e44a696d9d",
+      "candidate_count": 64,
+      "shard_count": 4,
+      "done": 4,
+      "leased": 0,
+      "ready": 0,
+      "tested": 64,
+      "complete": true,
+      "hit_count": 1,
+      "hits": [
+        {
+          "shard_id": 3,
+          "hit_commitment": "8780e79b508a1b2fe52dbd92b64ca8def2ab28f03ef2ed85c2fea5950efede04",
+          "result_digest": "06960833b4b9951b54dcddc479e1d92c6905be136363e1a45f4b5d4f1468377e"
+        }
+      ],
+      "lease_attempts": 4,
+      "expired_leases": 0,
+      "mathematical_candidates": 64,
+      "unique_accepted_evaluations": 64,
+      "physical_evaluations": 64,
+      "accepted_completions": 4,
+      "rejected_stale_or_duplicate": 0,
+      "gateways_used": [
+        "https://arweave.net",
+        "https://vevivo.art"
+      ],
+      "shard_details": [
+        {
+          "shard_id": 1,
+          "start_index": 0,
+          "end_index": 16,
+          "status": "done",
+          "completed_by": "worker-gw-2-1",
+          "gateway": "https://arweave.net",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 2,
+          "start_index": 16,
+          "end_index": 32,
+          "status": "done",
+          "completed_by": "worker-gw-2-2",
+          "gateway": "https://vevivo.art",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 3,
+          "start_index": 32,
+          "end_index": 48,
+          "status": "done",
+          "completed_by": "worker-gw-2-1",
+          "gateway": "https://arweave.net",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 4,
+          "start_index": 48,
+          "end_index": 64,
+          "status": "done",
+          "completed_by": "worker-gw-2-2",
+          "gateway": "https://vevivo.art",
+          "gateway_status": "OK"
+        }
+      ]
+    }
+  },
+  "p4": {
+    "workers": 4,
+    "wall_seconds": 7.23,
+    "throughput_c_per_s": 8.85,
+    "gateways_used": [
+      "https://arweave.net",
+      "https://ar.mrx.im",
+      "https://frostor.xyz",
+      "https://vevivo.art"
+    ],
+    "worker_results": [
+      {
+        "workerId": "worker-gw-4-1",
+        "gateway": "https://arweave.net",
+        "process_id": "worker-gw-4-1",
+        "shards_completed": 1,
+        "total_compute_ms": 4046.5014990000054
+      },
+      {
+        "workerId": "worker-gw-4-2",
+        "gateway": "https://vevivo.art",
+        "process_id": "worker-gw-4-2",
+        "shards_completed": 1,
+        "total_compute_ms": 3640.732143000234
+      },
+      {
+        "workerId": "worker-gw-4-3",
+        "gateway": "https://ar.mrx.im",
+        "process_id": "worker-gw-4-3",
+        "shards_completed": 1,
+        "total_compute_ms": 5582.875901000109
+      },
+      {
+        "workerId": "worker-gw-4-4",
+        "gateway": "https://frostor.xyz",
+        "process_id": "worker-gw-4-4",
+        "shards_completed": 1,
+        "total_compute_ms": 4178.432123000268
+      }
+    ],
+    "ledger": {
+      "run_id": "run-multi-gw-p4",
+      "target_id": "target-multi-gw-p4",
+      "family_digest": "09975e8d932ff74b34bd443b89e0c07db3bd5a3f563ff10f4a26e9aa81f7726a",
+      "kernel_digest": "73ec9947271d2e7b5da6ed134d119c379708a888b5f80996b6e3a7e44a696d9d",
+      "candidate_count": 64,
+      "shard_count": 4,
+      "done": 4,
+      "leased": 0,
+      "ready": 0,
+      "tested": 64,
+      "complete": true,
+      "hit_count": 1,
+      "hits": [
+        {
+          "shard_id": 2,
+          "hit_commitment": "b8ba2aa9f4f3dfb41658e4e46338f7522e04c9090f2072a885a5cd30fda42b74",
+          "result_digest": "f0eebc5fc71e8cf45e114c5e1f84f166e7ed2d373094b1ab041255be0ab64b00"
+        }
+      ],
+      "lease_attempts": 4,
+      "expired_leases": 0,
+      "mathematical_candidates": 64,
+      "unique_accepted_evaluations": 64,
+      "physical_evaluations": 64,
+      "accepted_completions": 4,
+      "rejected_stale_or_duplicate": 0,
+      "gateways_used": [
+        "https://arweave.net",
+        "https://ar.mrx.im",
+        "https://frostor.xyz",
+        "https://vevivo.art"
+      ],
+      "shard_details": [
+        {
+          "shard_id": 1,
+          "start_index": 0,
+          "end_index": 16,
+          "status": "done",
+          "completed_by": "worker-gw-4-1",
+          "gateway": "https://arweave.net",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 2,
+          "start_index": 16,
+          "end_index": 32,
+          "status": "done",
+          "completed_by": "worker-gw-4-3",
+          "gateway": "https://ar.mrx.im",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 3,
+          "start_index": 32,
+          "end_index": 48,
+          "status": "done",
+          "completed_by": "worker-gw-4-4",
+          "gateway": "https://frostor.xyz",
+          "gateway_status": "OK"
+        },
+        {
+          "shard_id": 4,
+          "start_index": 48,
+          "end_index": 64,
+          "status": "done",
+          "completed_by": "worker-gw-4-2",
+          "gateway": "https://vevivo.art",
+          "gateway_status": "OK"
+        }
+      ]
+    }
+  }
+}

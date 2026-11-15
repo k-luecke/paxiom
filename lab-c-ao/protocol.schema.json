@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab C AO shard lease",
+  "type": "object",
+  "required": ["run_id","target_id","family_digest","kernel_digest","shard_id","start_index","end_index"],
+  "properties": {
+    "run_id": {"type":"string","minLength":1},
+    "target_id": {"type":"string"},
+    "family_digest": {"type":"string","minLength":1},
+    "kernel_digest": {"type":"string","minLength":1},
+    "shard_id": {"type":"integer","minimum":1},
+    "start_index": {"type":"integer","minimum":0},
+    "end_index": {"type":"integer","minimum":1}
+  }
+}
